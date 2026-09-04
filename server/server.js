@@ -6,17 +6,13 @@ const app = express();
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
 
-// Guarda os agentes conectados: { nome: { ws, ip } }
 const agentes = {};
-
-// Guarda quem está assistindo qual agente: { nomeAgente: Set de ws de viewers }
 const assistindo = {};
 
 wss.on('connection', (ws) => {
-  let nomeAgente = null; // preenchido se essa conexão for um agente
-  let assistindoAgente = null; // preenchido se essa conexão for um viewer assistindo alguém
+  let nomeAgente = null;
+  let assistindoAgente = null;
 
-  // Manda a lista atual assim que alguém conecta (navegador ou agente)
   enviarListaPara(ws);
 
   ws.on('message', (msg) => {
@@ -28,7 +24,6 @@ wss.on('connection', (ws) => {
       return;
     }
 
-    // --- Mensagens vindas de um AGENTE ---
     if (data.tipo === 'anuncio') {
       nomeAgente = data.nome;
       agentes[nomeAgente] = { ws, ip: data.ip };
@@ -42,7 +37,9 @@ wss.on('connection', (ws) => {
         const msgFrame = JSON.stringify({
           tipo: 'frame',
           agente: nomeAgente,
-          dados: data.dados
+          dados: data.dados,
+          largura: data.largura,
+          altura: data.altura
         });
         viewers.forEach((viewerWs) => {
           if (viewerWs.readyState === 1) viewerWs.send(msgFrame);
@@ -50,7 +47,6 @@ wss.on('connection', (ws) => {
       }
     }
 
-    // --- Mensagens vindas de um VIEWER (navegador) ---
     if (data.tipo === 'conectar') {
       const agente = agentes[data.agente];
       if (!agente) return;
@@ -59,7 +55,6 @@ wss.on('connection', (ws) => {
       if (!assistindo[data.agente]) assistindo[data.agente] = new Set();
       assistindo[data.agente].add(ws);
 
-      // Avisa o agente pra começar a capturar (se for o primeiro viewer)
       if (assistindo[data.agente].size === 1) {
         agente.ws.send(JSON.stringify({ tipo: 'iniciar_stream' }));
       }
@@ -69,16 +64,20 @@ wss.on('connection', (ws) => {
     if (data.tipo === 'desconectar') {
       pararDeAssistir(data.agente, ws);
     }
+
+    // Repassa input (mouse/teclado) do viewer pro agente correto
+    if (data.tipo === 'input' && assistindoAgente) {
+      const agente = agentes[assistindoAgente];
+      if (agente) agente.ws.send(JSON.stringify(data));
+    }
   });
 
   ws.on('close', () => {
-    // Se era um agente, remove da lista
     if (nomeAgente && agentes[nomeAgente]) {
       delete agentes[nomeAgente];
       console.log(`[-] ${nomeAgente} offline`);
       broadcastLista();
     }
-    // Se era um viewer assistindo alguém, para de assistir
     if (assistindoAgente) {
       pararDeAssistir(assistindoAgente, ws);
     }
@@ -99,10 +98,7 @@ function pararDeAssistir(nomeAgente, viewerWs) {
 }
 
 function listaAtual() {
-  return Object.entries(agentes).map(([nome, info]) => ({
-    nome,
-    ip: info.ip
-  }));
+  return Object.entries(agentes).map(([nome, info]) => ({ nome, ip: info.ip }));
 }
 
 function enviarListaPara(ws) {
