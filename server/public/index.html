@@ -7,10 +7,9 @@
     body { font-family: sans-serif; background: #1a1a2e; color: #eee; padding: 40px; }
     h1 { color: #e94560; }
     .pc { background: #16213e; padding: 15px; margin: 10px 0; border-radius: 8px; display: flex; justify-content: space-between; align-items: center; }
-    .status { color: #4caf50; }
     button { background: #e94560; color: white; border: none; padding: 8px 16px; border-radius: 5px; cursor: pointer; }
     button:hover { opacity: 0.9; }
-    #tela-remota { max-width: 100%; border: 2px solid #e94560; border-radius: 8px; margin-top: 20px; display: none; }
+    #tela-remota { max-width: 100%; border: 2px solid #e94560; border-radius: 8px; margin-top: 20px; display: none; cursor: crosshair; outline: none; }
     #voltar { display: none; margin-bottom: 10px; }
   </style>
 </head>
@@ -19,11 +18,14 @@
 
   <button id="voltar" onclick="desconectar()">← Voltar pra lista</button>
   <div id="lista">Carregando...</div>
-  <img id="tela-remota" alt="Tela remota">
+  <img id="tela-remota" alt="Tela remota" tabindex="0">
 
   <script>
     const ws = new WebSocket(`ws://${location.host}`);
     let assistindoAgora = null;
+    let telaRemotaTamanho = { largura: 1920, altura: 1080 };
+
+    const img = document.getElementById('tela-remota');
 
     ws.onmessage = (event) => {
       const data = JSON.parse(event.data);
@@ -33,13 +35,16 @@
       }
 
       if (data.tipo === 'frame' && data.agente === assistindoAgora) {
-        document.getElementById('tela-remota').src = 'data:image/jpeg;base64,' + data.dados;
+        img.src = 'data:image/jpeg;base64,' + data.dados;
+        if (data.largura && data.altura) {
+          telaRemotaTamanho = { largura: data.largura, altura: data.altura };
+        }
       }
     };
 
     function renderLista(agentes) {
       const div = document.getElementById('lista');
-      if (assistindoAgora) return; // não atualiza lista enquanto assiste alguém
+      if (assistindoAgora) return;
 
       if (agentes.length === 0) {
         div.innerHTML = '<p>Nenhum PC online no momento.</p>';
@@ -57,8 +62,9 @@
       assistindoAgora = nome;
       ws.send(JSON.stringify({ tipo: 'conectar', agente: nome }));
       document.getElementById('lista').style.display = 'none';
-      document.getElementById('tela-remota').style.display = 'block';
+      img.style.display = 'block';
       document.getElementById('voltar').style.display = 'block';
+      img.focus();
     }
 
     function desconectar() {
@@ -67,9 +73,52 @@
       }
       assistindoAgora = null;
       document.getElementById('lista').style.display = 'block';
-      document.getElementById('tela-remota').style.display = 'none';
+      img.style.display = 'none';
       document.getElementById('voltar').style.display = 'none';
     }
+
+    // Converte posição do clique na imagem (tela do navegador) pra coordenada real da tela remota
+    function calcularPosicao(evento) {
+      const rect = img.getBoundingClientRect();
+      const escalaX = telaRemotaTamanho.largura / rect.width;
+      const escalaY = telaRemotaTamanho.altura / rect.height;
+      const x = Math.round((evento.clientX - rect.left) * escalaX);
+      const y = Math.round((evento.clientY - rect.top) * escalaY);
+      return { x, y };
+    }
+
+    function enviarInput(dados) {
+      if (!assistindoAgora) return;
+      ws.send(JSON.stringify({ tipo: 'input', ...dados }));
+    }
+
+    let ultimoMovimento = 0;
+    img.addEventListener('mousemove', (e) => {
+      const agora = Date.now();
+      if (agora - ultimoMovimento < 50) return; // limita a ~20x/seg
+      ultimoMovimento = agora;
+      const { x, y } = calcularPosicao(e);
+      enviarInput({ acao: 'mousemove', x, y });
+    });
+
+    img.addEventListener('mousedown', (e) => {
+      const { x, y } = calcularPosicao(e);
+      const botao = e.button === 2 ? 'right' : 'left';
+      enviarInput({ acao: 'mousedown', x, y, botao });
+    });
+
+    img.addEventListener('mouseup', (e) => {
+      const { x, y } = calcularPosicao(e);
+      const botao = e.button === 2 ? 'right' : 'left';
+      enviarInput({ acao: 'mouseup', x, y, botao });
+    });
+
+    img.addEventListener('contextmenu', (e) => e.preventDefault());
+
+    img.addEventListener('keydown', (e) => {
+      e.preventDefault();
+      enviarInput({ acao: 'keydown', tecla: e.key });
+    });
   </script>
 </body>
 </html>
