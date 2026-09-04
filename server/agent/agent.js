@@ -1,10 +1,10 @@
 const WebSocket = require('ws');
 const os = require('os');
 const screenshot = require('screenshot-desktop');
+const robot = require('robotjs');
 
-// CONFIGURAÇÃO — troque pelo IP do servidor Linux
 const SERVIDOR = 'ws://10.0.0.52:3000';
-const NOME_DESTE_PC = 'Recepção'; // troque pelo nome de cada PC
+const NOME_DESTE_PC = 'Recepção';
 
 let capturando = false;
 let intervalId = null;
@@ -26,17 +26,21 @@ function iniciarCaptura(ws) {
   capturando = true;
   console.log('Iniciando captura de tela...');
 
+  const tela = robot.getScreenSize();
+
   intervalId = setInterval(async () => {
     try {
       const img = await screenshot({ format: 'jpg' });
       ws.send(JSON.stringify({
         tipo: 'frame',
-        dados: img.toString('base64')
+        dados: img.toString('base64'),
+        largura: tela.width,
+        altura: tela.height
       }));
     } catch (e) {
       console.error('Erro ao capturar tela:', e.message);
     }
-  }, 100); // ~10 fps
+  }, 100);
 }
 
 function pararCaptura() {
@@ -44,6 +48,44 @@ function pararCaptura() {
   capturando = false;
   clearInterval(intervalId);
   console.log('Captura de tela parada.');
+}
+
+// Mapa de teclas especiais do navegador pro robotjs
+const MAPA_TECLAS = {
+  'Enter': 'enter',
+  'Backspace': 'backspace',
+  'Delete': 'delete',
+  'Tab': 'tab',
+  'Escape': 'escape',
+  'ArrowUp': 'up',
+  'ArrowDown': 'down',
+  'ArrowLeft': 'left',
+  'ArrowRight': 'right',
+  ' ': 'space',
+  'Shift': 'shift',
+  'Control': 'control',
+  'Alt': 'alt'
+};
+
+function processarInput(data) {
+  try {
+    if (data.acao === 'mousemove') {
+      robot.moveMouse(data.x, data.y);
+    } else if (data.acao === 'mousedown') {
+      robot.moveMouse(data.x, data.y);
+      robot.mouseToggle('down', data.botao || 'left');
+    } else if (data.acao === 'mouseup') {
+      robot.moveMouse(data.x, data.y);
+      robot.mouseToggle('up', data.botao || 'left');
+    } else if (data.acao === 'keydown') {
+      const tecla = MAPA_TECLAS[data.tecla] || data.tecla.toLowerCase();
+      if (tecla.length === 1 || MAPA_TECLAS[data.tecla]) {
+        robot.keyTap(tecla);
+      }
+    }
+  } catch (e) {
+    console.error('Erro ao processar input:', e.message);
+  }
 }
 
 function conectar() {
@@ -65,6 +107,8 @@ function conectar() {
         iniciarCaptura(ws);
       } else if (data.tipo === 'parar_stream') {
         pararCaptura();
+      } else if (data.tipo === 'input') {
+        processarInput(data);
       }
     } catch (e) {
       console.error('Mensagem inválida:', e);
