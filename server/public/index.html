@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>EnchantDesk</title>
+  <style>
+    body { font-family: sans-serif; background: #1a1a2e; color: #eee; padding: 40px; }
+    h1 { color: #e94560; }
+    .pc { background: #16213e; padding: 15px; margin: 10px 0; border-radius: 8px; display: flex; justify-content: space-between; align-items: center; }
+    .status { color: #4caf50; }
+  </style>
+</head>
+<body>
+  <h1>🌟 EnchantDesk</h1>
+  <div id="lista">Carregando...</div>
+
+  <script>
+    const ws = new WebSocket(`ws://${location.host}`);
+
+    ws.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      if (data.tipo === 'lista') {
+        renderLista(data.agentes);
+      }
+    };
+
+    function renderLista(agentes) {
+      const div = document.getElementById('lista');
+      if (agentes.length === 0) {
+        div.innerHTML = '<p>Nenhum PC online no momento.</p>';
+        return;
+      }
+      div.innerHTML = agentes.map(a => `
+        <div class="pc">
+          <span>🟢 <strong>${a.nome}</strong> (${a.ip})</span>
+          <span class="status">online</span>
+        </div>
+      `).join('');
+    }
+  </script>
+</body>
+</html>
