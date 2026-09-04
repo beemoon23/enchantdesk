@@ -8,24 +8,39 @@
     h1 { color: #e94560; }
     .pc { background: #16213e; padding: 15px; margin: 10px 0; border-radius: 8px; display: flex; justify-content: space-between; align-items: center; }
     .status { color: #4caf50; }
+    button { background: #e94560; color: white; border: none; padding: 8px 16px; border-radius: 5px; cursor: pointer; }
+    button:hover { opacity: 0.9; }
+    #tela-remota { max-width: 100%; border: 2px solid #e94560; border-radius: 8px; margin-top: 20px; display: none; }
+    #voltar { display: none; margin-bottom: 10px; }
   </style>
 </head>
 <body>
   <h1>🌟 EnchantDesk</h1>
+
+  <button id="voltar" onclick="desconectar()">← Voltar pra lista</button>
   <div id="lista">Carregando...</div>
+  <img id="tela-remota" alt="Tela remota">
 
   <script>
     const ws = new WebSocket(`ws://${location.host}`);
+    let assistindoAgora = null;
 
     ws.onmessage = (event) => {
       const data = JSON.parse(event.data);
+
       if (data.tipo === 'lista') {
         renderLista(data.agentes);
+      }
+
+      if (data.tipo === 'frame' && data.agente === assistindoAgora) {
+        document.getElementById('tela-remota').src = 'data:image/jpeg;base64,' + data.dados;
       }
     };
 
     function renderLista(agentes) {
       const div = document.getElementById('lista');
+      if (assistindoAgora) return; // não atualiza lista enquanto assiste alguém
+
       if (agentes.length === 0) {
         div.innerHTML = '<p>Nenhum PC online no momento.</p>';
         return;
@@ -33,9 +48,27 @@
       div.innerHTML = agentes.map(a => `
         <div class="pc">
           <span>🟢 <strong>${a.nome}</strong> (${a.ip})</span>
-          <span class="status">online</span>
+          <button onclick="conectar('${a.nome}')">Conectar</button>
         </div>
       `).join('');
+    }
+
+    function conectar(nome) {
+      assistindoAgora = nome;
+      ws.send(JSON.stringify({ tipo: 'conectar', agente: nome }));
+      document.getElementById('lista').style.display = 'none';
+      document.getElementById('tela-remota').style.display = 'block';
+      document.getElementById('voltar').style.display = 'block';
+    }
+
+    function desconectar() {
+      if (assistindoAgora) {
+        ws.send(JSON.stringify({ tipo: 'desconectar', agente: assistindoAgora }));
+      }
+      assistindoAgora = null;
+      document.getElementById('lista').style.display = 'block';
+      document.getElementById('tela-remota').style.display = 'none';
+      document.getElementById('voltar').style.display = 'none';
     }
   </script>
 </body>
