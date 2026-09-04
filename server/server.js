@@ -12,6 +12,13 @@ const agentes = {};
 wss.on('connection', (ws) => {
   let nomeAgente = null;
 
+  // Manda a lista atual assim que alguém conecta (navegador ou agente)
+  const listaAtual = Object.entries(agentes).map(([nome, info]) => ({
+    nome,
+    ip: info.ip
+  }));
+  ws.send(JSON.stringify({ tipo: 'lista', agentes: listaAtual }));
+
   ws.on('message', (msg) => {
     try {
       const data = JSON.parse(msg);
