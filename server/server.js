@@ -15,7 +15,17 @@ wss.on('connection', (ws) => {
 
   enviarListaPara(ws);
 
-  ws.on('message', (msg) => {
+  ws.on('message', (msg, isBinary) => {
+    if (isBinary && nomeAgente) {
+      const viewers = assistindo[nomeAgente];
+      if (viewers) {
+        viewers.forEach((viewerWs) => {
+          if (viewerWs.readyState === 1) viewerWs.send(msg, { binary: true });
+        });
+      }
+      return;
+    }
+
     let data;
     try {
       data = JSON.parse(msg);
@@ -29,22 +39,6 @@ wss.on('connection', (ws) => {
       agentes[nomeAgente] = { ws, ip: data.ip };
       console.log(`[+] ${nomeAgente} online (${data.ip})`);
       broadcastLista();
-    }
-
-    if (data.tipo === 'frame' && nomeAgente) {
-      const viewers = assistindo[nomeAgente];
-      if (viewers) {
-        const msgFrame = JSON.stringify({
-          tipo: 'frame',
-          agente: nomeAgente,
-          dados: data.dados,
-          largura: data.largura,
-          altura: data.altura
-        });
-        viewers.forEach((viewerWs) => {
-          if (viewerWs.readyState === 1) viewerWs.send(msgFrame);
-        });
-      }
     }
 
     if (data.tipo === 'conectar') {
@@ -65,7 +59,6 @@ wss.on('connection', (ws) => {
       pararDeAssistir(data.agente, ws);
     }
 
-    // Repassa input (mouse/teclado) do viewer pro agente correto
     if (data.tipo === 'input' && assistindoAgente) {
       const agente = agentes[assistindoAgente];
       if (agente) agente.ws.send(JSON.stringify(data));
