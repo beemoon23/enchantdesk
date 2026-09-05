@@ -40,7 +40,7 @@ function iniciarCaptura(ws) {
     } catch (e) {
       console.error('Erro ao capturar tela:', e.message);
     }
-  }, 100);
+  }, 300); // testando com menos frames por segundo (diagnóstico de delay)
 }
 
 function pararCaptura() {
@@ -50,9 +50,6 @@ function pararCaptura() {
   console.log('Captura de tela parada.');
 }
 
-// Só as teclas que realmente precisam de um "tap" especial.
-// Qualquer outro caractere (letras, números, acentos, símbolos) é digitado
-// diretamente via robot.typeString(), que lida certo com maiúsculas e acentos.
 const TECLAS_ESPECIAIS = {
   'Enter': 'enter',
   'Backspace': 'backspace',
@@ -66,9 +63,6 @@ const TECLAS_ESPECIAIS = {
   ' ': 'space'
 };
 
-// Teclas modificadoras que não devem gerar nenhuma ação sozinhas
-// (elas só importam combinadas, e o navegador já manda o caractere certo
-// já com maiúscula/acento aplicado em e.key)
 const TECLAS_IGNORAR = ['Shift', 'Control', 'Alt', 'Meta', 'CapsLock'];
 
 function processarInput(data) {
@@ -85,13 +79,12 @@ function processarInput(data) {
       const tecla = data.tecla;
 
       if (TECLAS_IGNORAR.includes(tecla)) {
-        return; // não faz nada, é só modificador sozinho
+        return;
       }
 
       if (TECLAS_ESPECIAIS[tecla]) {
         robot.keyTap(TECLAS_ESPECIAIS[tecla]);
       } else if (tecla.length === 1) {
-        // Caractere normal: letra (maiúscula/minúscula), número, acento, símbolo
         robot.typeString(tecla);
       }
     }
@@ -117,25 +110,3 @@ function conectar() {
       const data = JSON.parse(msg);
       if (data.tipo === 'iniciar_stream') {
         iniciarCaptura(ws);
-      } else if (data.tipo === 'parar_stream') {
-        pararCaptura();
-      } else if (data.tipo === 'input') {
-        processarInput(data);
-      }
-    } catch (e) {
-      console.error('Mensagem inválida:', e);
-    }
-  });
-
-  ws.on('close', () => {
-    pararCaptura();
-    console.log('Desconectado. Tentando reconectar em 5s...');
-    setTimeout(conectar, 5000);
-  });
-
-  ws.on('error', (err) => {
-    console.error('Erro de conexão:', err.message);
-  });
-}
-
-conectar();
