@@ -6,8 +6,9 @@ const app = express();
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
 
-const agentes = {}; // chave: id
-const assistindo = {}; // chave: id do agente -> Set de viewers
+const agentes = {}; // id -> { ws }
+const assistindo = {}; // id do agente -> Set de viewers ativos
+const pendentes = {}; // id do agente -> ws do viewer aguardando aprovação
 
 wss.on('connection', (ws) => {
   let idAgente = null;
@@ -38,6 +39,30 @@ wss.on('connection', (ws) => {
       console.log(`[+] ${idAgente} online`);
     }
 
+    // Agente respondeu ao pedido de conexão
+    if (data.tipo === 'permitir_stream' && idAgente) {
+      const viewerPendente = pendentes[idAgente];
+      if (viewerPendente) {
+        if (!assistindo[idAgente]) assistindo[idAgente] = new Set();
+        assistindo[idAgente].add(viewerPendente);
+        delete pendentes[idAgente];
+        console.log(`[👁] Conexão aceita em ${idAgente}`);
+      }
+    }
+
+    if (data.tipo === 'negar_conexao' && idAgente) {
+      const viewerPendente = pendentes[idAgente];
+      if (viewerPendente && viewerPendente.readyState === 1) {
+        viewerPendente.send(JSON.stringify({
+          tipo: 'erro',
+          mensagem: 'Conexão recusada pela pessoa na máquina remota.'
+        }));
+      }
+      delete pendentes[idAgente];
+      console.log(`[🚫] Conexão recusada em ${idAgente}`);
+    }
+
+    // Viewer pedindo pra conectar
     if (data.tipo === 'conectar') {
       const agente = agentes[data.id];
       if (!agente) {
@@ -46,13 +71,17 @@ wss.on('connection', (ws) => {
       }
 
       assistindoId = data.id;
-      if (!assistindo[data.id]) assistindo[data.id] = new Set();
-      assistindo[data.id].add(ws);
 
-      if (assistindo[data.id].size === 1) {
-        agente.ws.send(JSON.stringify({ tipo: 'iniciar_stream' }));
+      const jaTemViewersAtivos = assistindo[data.id] && assistindo[data.id].size > 0;
+      if (jaTemViewersAtivos) {
+        // Já está em sessão ativa: entra direto, sem pedir aprovação de novo
+        assistindo[data.id].add(ws);
+        return;
       }
-      console.log(`[👁] Viewer conectou em ${data.id}`);
+
+      // Primeira pessoa a tentar conectar: pede aprovação
+      pendentes[data.id] = ws;
+      agente.ws.send(JSON.stringify({ tipo: 'solicitar_conexao' }));
     }
 
     if (data.tipo === 'desconectar') {
