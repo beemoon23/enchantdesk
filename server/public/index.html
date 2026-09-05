@@ -22,25 +22,41 @@
 
   <script>
     const ws = new WebSocket(`ws://${location.host}`);
+    ws.binaryType = 'arraybuffer';
     let assistindoAgora = null;
     let telaRemotaTamanho = { largura: 1920, altura: 1080 };
+    let ultimaUrl = null;
 
     const img = document.getElementById('tela-remota');
 
     ws.onmessage = (event) => {
+      if (event.data instanceof ArrayBuffer) {
+        processarFrameBinario(event.data);
+        return;
+      }
       const data = JSON.parse(event.data);
-
       if (data.tipo === 'lista') {
         renderLista(data.agentes);
       }
-
-      if (data.tipo === 'frame' && data.agente === assistindoAgora) {
-        img.src = 'data:image/jpeg;base64,' + data.dados;
-        if (data.largura && data.altura) {
-          telaRemotaTamanho = { largura: data.largura, altura: data.altura };
-        }
-      }
     };
+
+    function processarFrameBinario(buffer) {
+      const view = new DataView(buffer);
+      const tipo = view.getUint8(0);
+      if (tipo !== 1) return;
+
+      const largura = view.getUint16(1);
+      const altura = view.getUint16(3);
+      telaRemotaTamanho = { largura, altura };
+
+      const jpegBytes = buffer.slice(5);
+      const blob = new Blob([jpegBytes], { type: 'image/jpeg' });
+      const url = URL.createObjectURL(blob);
+
+      if (ultimaUrl) URL.revokeObjectURL(ultimaUrl);
+      ultimaUrl = url;
+      img.src = url;
+    }
 
     function renderLista(agentes) {
       const div = document.getElementById('lista');
@@ -77,7 +93,6 @@
       document.getElementById('voltar').style.display = 'none';
     }
 
-    // Converte posição do clique na imagem (tela do navegador) pra coordenada real da tela remota
     function calcularPosicao(evento) {
       const rect = img.getBoundingClientRect();
       const escalaX = telaRemotaTamanho.largura / rect.width;
@@ -95,7 +110,7 @@
     let ultimoMovimento = 0;
     img.addEventListener('mousemove', (e) => {
       const agora = Date.now();
-      if (agora - ultimoMovimento < 50) return; // limita a ~20x/seg
+      if (agora - ultimoMovimento < 30) return;
       ultimoMovimento = agora;
       const { x, y } = calcularPosicao(e);
       enviarInput({ acao: 'mousemove', x, y });
