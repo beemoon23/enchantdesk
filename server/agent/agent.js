@@ -1,13 +1,14 @@
 const WebSocket = require('ws');
 const os = require('os');
-const screenshot = require('screenshot-desktop');
 const robot = require('robotjs');
+const sharp = require('sharp');
 
 const SERVIDOR = 'ws://10.0.0.52:3000';
 const NOME_DESTE_PC = 'Recepção';
 
 let capturando = false;
 let intervalId = null;
+let capturaEmAndamento = false;
 
 function pegarIP() {
   const interfaces = os.networkInterfaces();
@@ -21,26 +22,51 @@ function pegarIP() {
   return '0.0.0.0';
 }
 
+function converterBGRAparaRGBA(buffer) {
+  const out = Buffer.from(buffer);
+  for (let i = 0; i < out.length; i += 4) {
+    const b = out[i];
+    const r = out[i + 2];
+    out[i] = r;
+    out[i + 2] = b;
+  }
+  return out;
+}
+
 function iniciarCaptura(ws) {
   if (capturando) return;
   capturando = true;
   console.log('Iniciando captura de tela...');
 
-  const tela = robot.getScreenSize();
-
   intervalId = setInterval(async () => {
+    if (capturaEmAndamento) return;
+    capturaEmAndamento = true;
+    const inicio = Date.now();
     try {
-      const img = await screenshot({ format: 'jpg' });
+      const bitmap = robot.screen.capture();
+      const raw = converterBGRAparaRGBA(bitmap.image);
+
+      const imgReduzida = await sharp(raw, {
+        raw: { width: bitmap.width, height: bitmap.height, channels: 4 }
+      })
+        .resize({ width: 800 })
+        .jpeg({ quality: 50 })
+        .toBuffer();
+
       ws.send(JSON.stringify({
         tipo: 'frame',
-        dados: img.toString('base64'),
-        largura: tela.width,
-        altura: tela.height
+        dados: imgReduzida.toString('base64'),
+        largura: bitmap.width,
+        altura: bitmap.height
       }));
+
+      console.log(`Frame processado em ${Date.now() - inicio}ms (captura original: ${bitmap.width}x${bitmap.height})`);
     } catch (e) {
       console.error('Erro ao capturar tela:', e.message);
+    } finally {
+      capturaEmAndamento = false;
     }
-  }, 300); // testando com menos frames por segundo (diagnóstico de delay)
+  }, 100);
 }
 
 function pararCaptura() {
@@ -110,3 +136,25 @@ function conectar() {
       const data = JSON.parse(msg);
       if (data.tipo === 'iniciar_stream') {
         iniciarCaptura(ws);
+      } else if (data.tipo === 'parar_stream') {
+        pararCaptura();
+      } else if (data.tipo === 'input') {
+        processarInput(data);
+      }
+    } catch (e) {
+      console.error('Mensagem inválida:', e);
+    }
+  });
+
+  ws.on('close', () => {
+    pararCaptura();
+    console.log('Desconectado. Tentando reconectar em 5s...');
+    setTimeout(conectar, 5000);
+  });
+
+  ws.on('error', (err) => {
+    console.error('Erro de conexão:', err.message);
+  });
+}
+
+conectar();
