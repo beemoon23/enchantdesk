@@ -2,11 +2,13 @@ const WebSocket = require('ws');
 const os = require('os');
 const fs = require('fs');
 const path = require('path');
+const http = require('http');
 const { exec } = require('child_process');
 const robot = require('robotjs');
 const sharp = require('sharp');
 
 const SERVIDOR = 'ws://10.0.0.52:3000';
+const PORTA_LOCAL = 5757;
 
 const PASTA_CONFIG = path.join(os.homedir(), '.enchantdesk');
 const ARQUIVO_ID = path.join(PASTA_CONFIG, 'id.txt');
@@ -27,6 +29,44 @@ function obterOuCriarId() {
 const MEU_ID = obterOuCriarId();
 const idFormatado = MEU_ID.match(/.{1,3}/g).join(' ');
 
+// Estado da sessão: 'aguardando' | 'pendente' | 'em_uso'
+let estadoAtual = 'aguardando';
+let resolverPendencia = null;
+
+function criarServidorLocal() {
+  const servidor = http.createServer((req, res) => {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+    if (req.method === 'GET' && req.url === '/status') {
+      res.setHeader('Content-Type', 'application/json');
+      res.end(JSON.stringify({ estado: estadoAtual, id: idFormatado }));
+      return;
+    }
+
+    if (req.method === 'POST' && req.url === '/responder') {
+      let corpo = '';
+      req.on('data', (chunk) => (corpo += chunk));
+      req.on('end', () => {
+        try {
+          const { aceitar } = JSON.parse(corpo);
+          if (resolverPendencia) {
+            resolverPendencia(aceitar);
+            resolverPendencia = null;
+          }
+        } catch (e) {}
+        res.end('ok');
+      });
+      return;
+    }
+
+    res.statusCode = 404;
+    res.end();
+  });
+  servidor.listen(PORTA_LOCAL, '127.0.0.1');
+}
+
 function gerarEAbrirJanela() {
   const html = `<!DOCTYPE html>
 <html lang="pt-BR">
@@ -34,6 +74,7 @@ function gerarEAbrirJanela() {
 <meta charset="UTF-8">
 <title>EnchantDesk</title>
 <style>
+  * { box-sizing: border-box; }
   body {
     margin: 0;
     height: 100vh;
@@ -69,23 +110,103 @@ function gerarEAbrirJanela() {
   }
   .status {
     margin-top: 24px;
-    font-size: 12px;
-    color: #5FBFA0;
+    font-size: 13px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
   }
+  .bolinha {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+  }
+  .pedido {
+    margin-top: 20px;
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    background: #152420;
+    border: 1px solid #E8B657;
+    padding: 16px 20px;
+    border-radius: 8px;
+  }
+  .pedido.visivel { display: flex; }
+  .pedido p { margin: 0; font-size: 14px; text-align: center; }
+  .botoes { display: flex; gap: 10px; }
+  button {
+    font-family: inherit;
+    border: none;
+    padding: 8px 20px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+  }
+  .aceitar { background: #5FBFA0; color: #0D1712; }
+  .recusar { background: transparent; color: #C97B63; border: 1px solid #C97B63; }
 </style>
 </head>
 <body>
   <div class="marca">EnchantDesk</div>
   <div class="rotulo">Este é o ID desta máquina</div>
   <div class="id">${idFormatado}</div>
-  <div class="status">● Aguardando conexão</div>
+  <div class="status" id="status">
+    <span class="bolinha" style="background:#5FBFA0"></span>
+    <span id="texto-status">Aguardando conexão</span>
+  </div>
+  <div class="pedido" id="pedido">
+    <p>Alguém quer se conectar nesta máquina.</p>
+    <div class="botoes">
+      <button class="aceitar" onclick="responder(true)">Aceitar</button>
+      <button class="recusar" onclick="responder(false)">Recusar</button>
+    </div>
+  </div>
+
+  <script>
+    async function verificarStatus() {
+      try {
+        const resp = await fetch('http://127.0.0.1:${PORTA_LOCAL}/status');
+        const data = await resp.json();
+        const bolinha = document.querySelector('.bolinha');
+        const texto = document.getElementById('texto-status');
+        const pedido = document.getElementById('pedido');
+
+        if (data.estado === 'pendente') {
+          pedido.classList.add('visivel');
+          texto.textContent = 'Solicitação recebida';
+          bolinha.style.background = '#E8B657';
+        } else if (data.estado === 'em_uso') {
+          pedido.classList.remove('visivel');
+          texto.textContent = 'Em uso — alguém está controlando esta máquina';
+          bolinha.style.background = '#C97B63';
+        } else {
+          pedido.classList.remove('visivel');
+          texto.textContent = 'Aguardando conexão';
+          bolinha.style.background = '#5FBFA0';
+        }
+      } catch (e) {}
+    }
+
+    async function responder(aceitar) {
+      await fetch('http://127.0.0.1:${PORTA_LOCAL}/responder', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ aceitar })
+      });
+      verificarStatus();
+    }
+
+    setInterval(verificarStatus, 1000);
+    verificarStatus();
+  </script>
 </body>
 </html>`;
 
   fs.writeFileSync(ARQUIVO_HTML, html);
 
   const caminhoFileUrl = 'file:///' + ARQUIVO_HTML.replace(/\\/g, '/');
-  const comando = `start msedge --app="${caminhoFileUrl}" --window-size=380,320`;
+  const comando = `start msedge --app="${caminhoFileUrl}" --window-size=380,380`;
 
   exec(comando, (erro) => {
     if (erro) {
@@ -120,7 +241,6 @@ function montarPacoteFrame(largura, altura, jpegBuffer) {
 function iniciarCaptura(ws) {
   if (capturando) return;
   capturando = true;
-  console.log('Iniciando captura de tela...');
 
   intervalId = setInterval(async () => {
     if (capturaEmAndamento) return;
@@ -149,7 +269,6 @@ function pararCaptura() {
   if (!capturando) return;
   capturando = false;
   clearInterval(intervalId);
-  console.log('Captura de tela parada.');
 }
 
 const TECLAS_ESPECIAIS = {
@@ -196,20 +315,31 @@ function conectar() {
 
   ws.on('open', () => {
     console.log('Conectado ao servidor EnchantDesk. Seu ID: ' + idFormatado);
-    ws.send(JSON.stringify({
-      tipo: 'anuncio',
-      id: MEU_ID
-    }));
+    ws.send(JSON.stringify({ tipo: 'anuncio', id: MEU_ID }));
   });
 
-  ws.on('message', (msg, isBinary) => {
+  ws.on('message', async (msg, isBinary) => {
     if (isBinary) return;
     try {
       const data = JSON.parse(msg);
-      if (data.tipo === 'iniciar_stream') {
-        iniciarCaptura(ws);
+
+      if (data.tipo === 'solicitar_conexao') {
+        estadoAtual = 'pendente';
+        const aceitou = await new Promise((resolve) => {
+          resolverPendencia = resolve;
+        });
+
+        if (aceitou) {
+          estadoAtual = 'em_uso';
+          ws.send(JSON.stringify({ tipo: 'permitir_stream' }));
+          iniciarCaptura(ws);
+        } else {
+          estadoAtual = 'aguardando';
+          ws.send(JSON.stringify({ tipo: 'negar_conexao' }));
+        }
       } else if (data.tipo === 'parar_stream') {
         pararCaptura();
+        estadoAtual = 'aguardando';
       } else if (data.tipo === 'input') {
         processarInput(data);
       }
@@ -220,6 +350,7 @@ function conectar() {
 
   ws.on('close', () => {
     pararCaptura();
+    estadoAtual = 'aguardando';
     console.log('Desconectado. Tentando reconectar em 5s...');
     setTimeout(conectar, 5000);
   });
@@ -229,5 +360,6 @@ function conectar() {
   });
 }
 
+criarServidorLocal();
 gerarEAbrirJanela();
 conectar();
