@@ -6,9 +6,11 @@ const app = express();
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
 
-const agentes = {}; // id -> { ws }
-const assistindo = {}; // id do agente -> Set de viewers ativos
-const pendentes = {}; // id do agente -> ws do viewer aguardando aprovação
+const agentes = {};
+const assistindo = {};
+const pendentes = {};
+
+const TIPOS_ENCAMINHAR_PARA_AGENTE = ['input', 'arquivo_inicio', 'arquivo_chunk', 'arquivo_fim'];
 
 wss.on('connection', (ws) => {
   let idAgente = null;
@@ -39,7 +41,6 @@ wss.on('connection', (ws) => {
       console.log(`[+] ${idAgente} online`);
     }
 
-    // Agente respondeu ao pedido de conexão
     if (data.tipo === 'permitir_stream' && idAgente) {
       const viewerPendente = pendentes[idAgente];
       if (viewerPendente) {
@@ -62,7 +63,6 @@ wss.on('connection', (ws) => {
       console.log(`[🚫] Conexão recusada em ${idAgente}`);
     }
 
-    // Viewer pedindo pra conectar
     if (data.tipo === 'conectar') {
       const agente = agentes[data.id];
       if (!agente) {
@@ -74,12 +74,10 @@ wss.on('connection', (ws) => {
 
       const jaTemViewersAtivos = assistindo[data.id] && assistindo[data.id].size > 0;
       if (jaTemViewersAtivos) {
-        // Já está em sessão ativa: entra direto, sem pedir aprovação de novo
         assistindo[data.id].add(ws);
         return;
       }
 
-      // Primeira pessoa a tentar conectar: pede aprovação
       pendentes[data.id] = ws;
       agente.ws.send(JSON.stringify({ tipo: 'solicitar_conexao' }));
     }
@@ -88,7 +86,7 @@ wss.on('connection', (ws) => {
       pararDeAssistir(data.id, ws);
     }
 
-    if (data.tipo === 'input' && assistindoId) {
+    if (TIPOS_ENCAMINHAR_PARA_AGENTE.includes(data.tipo) && assistindoId) {
       const agente = agentes[assistindoId];
       if (agente) agente.ws.send(JSON.stringify(data));
     }
