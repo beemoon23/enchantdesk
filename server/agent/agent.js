@@ -50,8 +50,10 @@ function pararCaptura() {
   console.log('Captura de tela parada.');
 }
 
-// Mapa de teclas especiais do navegador pro robotjs
-const MAPA_TECLAS = {
+// Só as teclas que realmente precisam de um "tap" especial.
+// Qualquer outro caractere (letras, números, acentos, símbolos) é digitado
+// diretamente via robot.typeString(), que lida certo com maiúsculas e acentos.
+const TECLAS_ESPECIAIS = {
   'Enter': 'enter',
   'Backspace': 'backspace',
   'Delete': 'delete',
@@ -61,11 +63,13 @@ const MAPA_TECLAS = {
   'ArrowDown': 'down',
   'ArrowLeft': 'left',
   'ArrowRight': 'right',
-  ' ': 'space',
-  'Shift': 'shift',
-  'Control': 'control',
-  'Alt': 'alt'
+  ' ': 'space'
 };
+
+// Teclas modificadoras que não devem gerar nenhuma ação sozinhas
+// (elas só importam combinadas, e o navegador já manda o caractere certo
+// já com maiúscula/acento aplicado em e.key)
+const TECLAS_IGNORAR = ['Shift', 'Control', 'Alt', 'Meta', 'CapsLock'];
 
 function processarInput(data) {
   try {
@@ -78,9 +82,17 @@ function processarInput(data) {
       robot.moveMouse(data.x, data.y);
       robot.mouseToggle('up', data.botao || 'left');
     } else if (data.acao === 'keydown') {
-      const tecla = MAPA_TECLAS[data.tecla] || data.tecla.toLowerCase();
-      if (tecla.length === 1 || MAPA_TECLAS[data.tecla]) {
-        robot.keyTap(tecla);
+      const tecla = data.tecla;
+
+      if (TECLAS_IGNORAR.includes(tecla)) {
+        return; // não faz nada, é só modificador sozinho
+      }
+
+      if (TECLAS_ESPECIAIS[tecla]) {
+        robot.keyTap(TECLAS_ESPECIAIS[tecla]);
+      } else if (tecla.length === 1) {
+        // Caractere normal: letra (maiúscula/minúscula), número, acento, símbolo
+        robot.typeString(tecla);
       }
     }
   } catch (e) {
