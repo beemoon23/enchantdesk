@@ -1,26 +1,33 @@
 const WebSocket = require('ws');
 const os = require('os');
+const fs = require('fs');
+const path = require('path');
 const robot = require('robotjs');
 const sharp = require('sharp');
 
 const SERVIDOR = 'ws://10.0.0.52:3000';
-const NOME_DESTE_PC = 'Recepção';
+
+const PASTA_CONFIG = path.join(os.homedir(), '.enchantdesk');
+const ARQUIVO_ID = path.join(PASTA_CONFIG, 'id.txt');
+
+function obterOuCriarId() {
+  if (!fs.existsSync(PASTA_CONFIG)) {
+    fs.mkdirSync(PASTA_CONFIG, { recursive: true });
+  }
+  if (fs.existsSync(ARQUIVO_ID)) {
+    return fs.readFileSync(ARQUIVO_ID, 'utf-8').trim();
+  }
+  const novoId = String(Math.floor(100000000 + Math.random() * 900000000));
+  fs.writeFileSync(ARQUIVO_ID, novoId);
+  return novoId;
+}
+
+const MEU_ID = obterOuCriarId();
+const IdFormatado = MEU_ID.match(/.{1,3}/g).join(' ');
 
 let capturando = false;
 let intervalId = null;
 let capturaEmAndamento = false;
-
-function pegarIP() {
-  const interfaces = os.networkInterfaces();
-  for (const nome in interfaces) {
-    for (const iface of interfaces[nome]) {
-      if (iface.family === 'IPv4' && !iface.internal) {
-        return iface.address;
-      }
-    }
-  }
-  return '0.0.0.0';
-}
 
 function converterBGRAparaRGBA(buffer) {
   const out = Buffer.from(buffer);
@@ -49,7 +56,6 @@ function iniciarCaptura(ws) {
   intervalId = setInterval(async () => {
     if (capturaEmAndamento) return;
     capturaEmAndamento = true;
-    const inicio = Date.now();
     try {
       const bitmap = robot.screen.capture();
       const raw = converterBGRAparaRGBA(bitmap.image);
@@ -62,8 +68,6 @@ function iniciarCaptura(ws) {
 
       const pacote = montarPacoteFrame(bitmap.width, bitmap.height, jpegBuffer);
       ws.send(pacote, { binary: true });
-
-      console.log(`Frame processado em ${Date.now() - inicio}ms (${bitmap.width}x${bitmap.height}, ${jpegBuffer.length} bytes)`);
     } catch (e) {
       console.error('Erro ao capturar tela:', e.message);
     } finally {
@@ -122,11 +126,13 @@ function conectar() {
   const ws = new WebSocket(SERVIDOR);
 
   ws.on('open', () => {
-    console.log('Conectado ao servidor EnchantDesk');
+    console.log('========================================');
+    console.log('  Conectado ao servidor EnchantDesk');
+    console.log('  Seu ID: ' + IdFormatado);
+    console.log('========================================');
     ws.send(JSON.stringify({
       tipo: 'anuncio',
-      nome: NOME_DESTE_PC,
-      ip: pegarIP()
+      id: MEU_ID
     }));
   });
 
