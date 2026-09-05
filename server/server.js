@@ -6,18 +6,16 @@ const app = express();
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
 
-const agentes = {};
-const assistindo = {};
+const agentes = {}; // chave: id
+const assistindo = {}; // chave: id do agente -> Set de viewers
 
 wss.on('connection', (ws) => {
-  let nomeAgente = null;
-  let assistindoAgente = null;
-
-  enviarListaPara(ws);
+  let idAgente = null;
+  let assistindoId = null;
 
   ws.on('message', (msg, isBinary) => {
-    if (isBinary && nomeAgente) {
-      const viewers = assistindo[nomeAgente];
+    if (isBinary && idAgente) {
+      const viewers = assistindo[idAgente];
       if (viewers) {
         viewers.forEach((viewerWs) => {
           if (viewerWs.readyState === 1) viewerWs.send(msg, { binary: true });
@@ -35,74 +33,60 @@ wss.on('connection', (ws) => {
     }
 
     if (data.tipo === 'anuncio') {
-      nomeAgente = data.nome;
-      agentes[nomeAgente] = { ws, ip: data.ip };
-      console.log(`[+] ${nomeAgente} online (${data.ip})`);
-      broadcastLista();
+      idAgente = data.id;
+      agentes[idAgente] = { ws };
+      console.log(`[+] ${idAgente} online`);
     }
 
     if (data.tipo === 'conectar') {
-      const agente = agentes[data.agente];
-      if (!agente) return;
+      const agente = agentes[data.id];
+      if (!agente) {
+        ws.send(JSON.stringify({ tipo: 'erro', mensagem: 'ID não encontrado ou máquina offline.' }));
+        return;
+      }
 
-      assistindoAgente = data.agente;
-      if (!assistindo[data.agente]) assistindo[data.agente] = new Set();
-      assistindo[data.agente].add(ws);
+      assistindoId = data.id;
+      if (!assistindo[data.id]) assistindo[data.id] = new Set();
+      assistindo[data.id].add(ws);
 
-      if (assistindo[data.agente].size === 1) {
+      if (assistindo[data.id].size === 1) {
         agente.ws.send(JSON.stringify({ tipo: 'iniciar_stream' }));
       }
-      console.log(`[👁] Viewer conectou em ${data.agente}`);
+      console.log(`[👁] Viewer conectou em ${data.id}`);
     }
 
     if (data.tipo === 'desconectar') {
-      pararDeAssistir(data.agente, ws);
+      pararDeAssistir(data.id, ws);
     }
 
-    if (data.tipo === 'input' && assistindoAgente) {
-      const agente = agentes[assistindoAgente];
+    if (data.tipo === 'input' && assistindoId) {
+      const agente = agentes[assistindoId];
       if (agente) agente.ws.send(JSON.stringify(data));
     }
   });
 
   ws.on('close', () => {
-    if (nomeAgente && agentes[nomeAgente]) {
-      delete agentes[nomeAgente];
-      console.log(`[-] ${nomeAgente} offline`);
-      broadcastLista();
+    if (idAgente && agentes[idAgente]) {
+      delete agentes[idAgente];
+      console.log(`[-] ${idAgente} offline`);
     }
-    if (assistindoAgente) {
-      pararDeAssistir(assistindoAgente, ws);
+    if (assistindoId) {
+      pararDeAssistir(assistindoId, ws);
     }
   });
 });
 
-function pararDeAssistir(nomeAgente, viewerWs) {
-  const viewers = assistindo[nomeAgente];
+function pararDeAssistir(id, viewerWs) {
+  const viewers = assistindo[id];
   if (!viewers) return;
   viewers.delete(viewerWs);
 
   if (viewers.size === 0) {
-    delete assistindo[nomeAgente];
-    const agente = agentes[nomeAgente];
+    delete assistindo[id];
+    const agente = agentes[id];
     if (agente) agente.ws.send(JSON.stringify({ tipo: 'parar_stream' }));
-    console.log(`[👁] Ninguém mais assistindo ${nomeAgente}, parando captura`);
+    console.log(`[👁] Ninguém mais assistindo ${id}, parando captura`);
   }
-}
-
-function listaAtual() {
-  return Object.entries(agentes).map(([nome, info]) => ({ nome, ip: info.ip }));
-}
-
-function enviarListaPara(ws) {
-  ws.send(JSON.stringify({ tipo: 'lista', agentes: listaAtual() }));
-}
-
-function broadcastLista() {
-  const msg = JSON.stringify({ tipo: 'lista', agentes: listaAtual() });
-  wss.clients.forEach((client) => {
-    if (client.readyState === 1) client.send(msg);
-  });
 }
 
 app.use(express.static('public'));
