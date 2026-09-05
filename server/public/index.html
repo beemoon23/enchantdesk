@@ -2,23 +2,247 @@
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>EnchantDesk</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=Spectral:ital,wght@0,500;1,500;1,600&display=swap" rel="stylesheet">
   <style>
-    body { font-family: sans-serif; background: #1a1a2e; color: #eee; padding: 40px; }
-    h1 { color: #e94560; }
-    .pc { background: #16213e; padding: 15px; margin: 10px 0; border-radius: 8px; display: flex; justify-content: space-between; align-items: center; }
-    button { background: #e94560; color: white; border: none; padding: 8px 16px; border-radius: 5px; cursor: pointer; }
-    button:hover { opacity: 0.9; }
-    #tela-remota { max-width: 100%; border: 2px solid #e94560; border-radius: 8px; margin-top: 20px; display: none; cursor: crosshair; outline: none; }
-    #voltar { display: none; margin-bottom: 10px; }
+    :root {
+      --bg: #0D1712;
+      --panel: #152420;
+      --panel-border: #24382F;
+      --panel-hover: #1B2E26;
+      --gold: #E8B657;
+      --teal: #5FBFA0;
+      --rust: #8A6A52;
+      --text: #EDE8DA;
+      --text-muted: #8FA396;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      font-family: 'IBM Plex Sans', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      margin: 0;
+      min-height: 100vh;
+    }
+
+    .topo {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      padding: 36px 48px 20px;
+      border-bottom: 1px solid var(--panel-border);
+    }
+
+    .marca {
+      font-family: 'Spectral', serif;
+      font-style: italic;
+      font-weight: 600;
+      font-size: 28px;
+      color: var(--gold);
+      margin: 0;
+    }
+
+    .marca span {
+      font-family: 'IBM Plex Sans', sans-serif;
+      font-style: normal;
+      font-weight: 400;
+      font-size: 14px;
+      color: var(--text-muted);
+      margin-left: 12px;
+    }
+
+    .contagem {
+      font-size: 14px;
+      color: var(--text-muted);
+    }
+
+    main {
+      padding: 40px 48px;
+      max-width: 960px;
+    }
+
+    .vazio {
+      color: var(--text-muted);
+      font-size: 15px;
+      line-height: 1.6;
+      max-width: 40ch;
+    }
+
+    .grade {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+      gap: 14px;
+    }
+
+    .maquina {
+      background: var(--panel);
+      border: 1px solid var(--panel-border);
+      border-left: 3px solid var(--teal);
+      border-radius: 6px;
+      padding: 18px 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      transition: background 0.15s ease, border-color 0.15s ease;
+    }
+
+    .maquina:hover {
+      background: var(--panel-hover);
+    }
+
+    .maquina.offline {
+      border-left-color: var(--rust);
+      opacity: 0.6;
+    }
+
+    .maquina-nome {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      font-size: 16px;
+      font-weight: 500;
+    }
+
+    .luz {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--teal);
+      box-shadow: 0 0 8px var(--teal), 0 0 2px var(--teal);
+      animation: pulsar 2.4s ease-in-out infinite;
+      flex-shrink: 0;
+    }
+
+    @keyframes pulsar {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.45; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .luz { animation: none; }
+    }
+
+    .maquina-ip {
+      font-family: 'IBM Plex Sans', monospace;
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+
+    button {
+      font-family: inherit;
+      background: transparent;
+      color: var(--gold);
+      border: 1px solid var(--gold);
+      padding: 8px 16px;
+      border-radius: 5px;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 500;
+      align-self: flex-start;
+      transition: background 0.15s ease, color 0.15s ease;
+    }
+
+    button:hover {
+      background: var(--gold);
+      color: var(--bg);
+    }
+
+    button:focus-visible {
+      outline: 2px solid var(--teal);
+      outline-offset: 2px;
+    }
+
+    /* --- Visualização remota --- */
+
+    .barra-sessao {
+      display: none;
+      align-items: center;
+      gap: 16px;
+      padding: 18px 48px;
+      border-bottom: 1px solid var(--panel-border);
+    }
+
+    .barra-sessao.ativa {
+      display: flex;
+    }
+
+    .btn-voltar {
+      align-self: auto;
+    }
+
+    .sessao-nome {
+      font-size: 15px;
+      color: var(--text-muted);
+    }
+
+    .sessao-nome strong {
+      color: var(--text);
+      font-weight: 500;
+    }
+
+    .palco {
+      display: none;
+      padding: 24px 48px 48px;
+    }
+
+    .palco.ativo {
+      display: block;
+    }
+
+    .moldura {
+      position: relative;
+      border-radius: 8px;
+      overflow: hidden;
+      box-shadow: 0 0 0 1px var(--panel-border), 0 20px 60px -20px rgba(0,0,0,0.6);
+    }
+
+    #tela-remota {
+      display: block;
+      width: 100%;
+      cursor: crosshair;
+      outline: none;
+    }
+
+    .conectando {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--panel);
+      color: var(--text-muted);
+      font-size: 14px;
+    }
   </style>
 </head>
 <body>
-  <h1>🌟 EnchantDesk</h1>
+  <div class="topo">
+    <h1 class="marca">EnchantDesk<span>Vale Encantado</span></h1>
+    <div class="contagem" id="contagem"></div>
+  </div>
 
-  <button id="voltar" onclick="desconectar()">← Voltar pra lista</button>
-  <div id="lista">Carregando...</div>
-  <img id="tela-remota" alt="Tela remota" tabindex="0">
+  <div class="barra-sessao" id="barra-sessao">
+    <button class="btn-voltar" onclick="desconectar()">← Voltar</button>
+    <span class="sessao-nome">Controlando <strong id="nome-sessao"></strong></span>
+  </div>
+
+  <main>
+    <div id="lista">
+      <p class="vazio">Carregando lista de máquinas...</p>
+    </div>
+  </main>
+
+  <div class="palco" id="palco">
+    <div class="moldura">
+      <img id="tela-remota" alt="Tela remota" tabindex="0">
+      <div class="conectando" id="conectando">Conectando à máquina remota...</div>
+    </div>
+  </div>
 
   <script>
     const ws = new WebSocket(`ws://${location.host}`);
@@ -26,8 +250,10 @@
     let assistindoAgora = null;
     let telaRemotaTamanho = { largura: 1920, altura: 1080 };
     let ultimaUrl = null;
+    let primeiroFrameRecebido = false;
 
     const img = document.getElementById('tela-remota');
+    const conectandoOverlay = document.getElementById('conectando');
 
     ws.onmessage = (event) => {
       if (event.data instanceof ArrayBuffer) {
@@ -56,30 +282,45 @@
       if (ultimaUrl) URL.revokeObjectURL(ultimaUrl);
       ultimaUrl = url;
       img.src = url;
+
+      if (!primeiroFrameRecebido) {
+        primeiroFrameRecebido = true;
+        conectandoOverlay.style.display = 'none';
+      }
     }
 
     function renderLista(agentes) {
-      const div = document.getElementById('lista');
+      const divLista = document.getElementById('lista');
+      const contagem = document.getElementById('contagem');
       if (assistindoAgora) return;
 
+      contagem.textContent = agentes.length > 0
+        ? `${agentes.length} ${agentes.length === 1 ? 'máquina online' : 'máquinas online'}`
+        : '';
+
       if (agentes.length === 0) {
-        div.innerHTML = '<p>Nenhum PC online no momento.</p>';
+        divLista.innerHTML = '<p class="vazio">Nenhuma máquina disponível agora. Assim que um agente for iniciado em algum PC, ele aparece aqui.</p>';
         return;
       }
-      div.innerHTML = agentes.map(a => `
-        <div class="pc">
-          <span>🟢 <strong>${a.nome}</strong> (${a.ip})</span>
+
+      divLista.innerHTML = `<div class="grade">${agentes.map(a => `
+        <div class="maquina">
+          <div class="maquina-nome"><span class="luz"></span>${a.nome}</div>
+          <div class="maquina-ip">${a.ip}</div>
           <button onclick="conectar('${a.nome}')">Conectar</button>
         </div>
-      `).join('');
+      `).join('')}</div>`;
     }
 
     function conectar(nome) {
       assistindoAgora = nome;
+      primeiroFrameRecebido = false;
       ws.send(JSON.stringify({ tipo: 'conectar', agente: nome }));
-      document.getElementById('lista').style.display = 'none';
-      img.style.display = 'block';
-      document.getElementById('voltar').style.display = 'block';
+
+      document.getElementById('nome-sessao').textContent = nome;
+      document.getElementById('barra-sessao').classList.add('ativa');
+      document.getElementById('palco').classList.add('ativo');
+      conectandoOverlay.style.display = 'flex';
       img.focus();
     }
 
@@ -88,9 +329,8 @@
         ws.send(JSON.stringify({ tipo: 'desconectar', agente: assistindoAgora }));
       }
       assistindoAgora = null;
-      document.getElementById('lista').style.display = 'block';
-      img.style.display = 'none';
-      document.getElementById('voltar').style.display = 'none';
+      document.getElementById('barra-sessao').classList.remove('ativa');
+      document.getElementById('palco').classList.remove('ativo');
     }
 
     function calcularPosicao(evento) {
