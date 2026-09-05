@@ -29,15 +29,20 @@ function obterOuCriarId() {
 const MEU_ID = obterOuCriarId();
 const idFormatado = MEU_ID.match(/.{1,3}/g).join(' ');
 
-// Estado da sessão: 'aguardando' | 'pendente' | 'em_uso'
 let estadoAtual = 'aguardando';
 let resolverPendencia = null;
 
 function criarServidorLocal() {
   const servidor = http.createServer((req, res) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+    if (req.method === 'OPTIONS') {
+      res.statusCode = 204;
+      res.end();
+      return;
+    }
 
     if (req.method === 'GET' && req.url === '/status') {
       res.setHeader('Content-Type', 'application/json');
@@ -189,11 +194,15 @@ function gerarEAbrirJanela() {
     }
 
     async function responder(aceitar) {
-      await fetch('http://127.0.0.1:${PORTA_LOCAL}/responder', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ aceitar })
-      });
+      try {
+        await fetch('http://127.0.0.1:${PORTA_LOCAL}/responder', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ aceitar })
+        });
+      } catch (e) {
+        console.error('Erro ao responder:', e);
+      }
       verificarStatus();
     }
 
