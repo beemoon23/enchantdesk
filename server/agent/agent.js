@@ -2,6 +2,7 @@ const WebSocket = require('ws');
 const os = require('os');
 const fs = require('fs');
 const path = require('path');
+const { exec } = require('child_process');
 const robot = require('robotjs');
 const sharp = require('sharp');
 
@@ -9,6 +10,7 @@ const SERVIDOR = 'ws://10.0.0.52:3000';
 
 const PASTA_CONFIG = path.join(os.homedir(), '.enchantdesk');
 const ARQUIVO_ID = path.join(PASTA_CONFIG, 'id.txt');
+const ARQUIVO_HTML = path.join(PASTA_CONFIG, 'janela.html');
 
 function obterOuCriarId() {
   if (!fs.existsSync(PASTA_CONFIG)) {
@@ -23,7 +25,74 @@ function obterOuCriarId() {
 }
 
 const MEU_ID = obterOuCriarId();
-const IdFormatado = MEU_ID.match(/.{1,3}/g).join(' ');
+const idFormatado = MEU_ID.match(/.{1,3}/g).join(' ');
+
+function gerarEAbrirJanela() {
+  const html = `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>EnchantDesk</title>
+<style>
+  body {
+    margin: 0;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: #0D1712;
+    font-family: -apple-system, sans-serif;
+    color: #EDE8DA;
+  }
+  .marca {
+    font-family: Georgia, serif;
+    font-style: italic;
+    font-size: 22px;
+    color: #E8B657;
+    margin-bottom: 30px;
+  }
+  .rotulo {
+    font-size: 13px;
+    color: #8FA396;
+    margin-bottom: 8px;
+  }
+  .id {
+    font-family: 'Courier New', monospace;
+    font-size: 32px;
+    letter-spacing: 3px;
+    color: #EDE8DA;
+    background: #152420;
+    border: 1px solid #24382F;
+    padding: 14px 24px;
+    border-radius: 8px;
+  }
+  .status {
+    margin-top: 24px;
+    font-size: 12px;
+    color: #5FBFA0;
+  }
+</style>
+</head>
+<body>
+  <div class="marca">EnchantDesk</div>
+  <div class="rotulo">Este é o ID desta máquina</div>
+  <div class="id">${idFormatado}</div>
+  <div class="status">● Aguardando conexão</div>
+</body>
+</html>`;
+
+  fs.writeFileSync(ARQUIVO_HTML, html);
+
+  const caminhoFileUrl = 'file:///' + ARQUIVO_HTML.replace(/\\/g, '/');
+  const comando = `start msedge --app="${caminhoFileUrl}" --window-size=380,320`;
+
+  exec(comando, (erro) => {
+    if (erro) {
+      console.log('Não foi possível abrir a janela automática. Seu ID é: ' + idFormatado);
+    }
+  });
+}
 
 let capturando = false;
 let intervalId = null;
@@ -126,10 +195,7 @@ function conectar() {
   const ws = new WebSocket(SERVIDOR);
 
   ws.on('open', () => {
-    console.log('========================================');
-    console.log('  Conectado ao servidor EnchantDesk');
-    console.log('  Seu ID: ' + IdFormatado);
-    console.log('========================================');
+    console.log('Conectado ao servidor EnchantDesk. Seu ID: ' + idFormatado);
     ws.send(JSON.stringify({
       tipo: 'anuncio',
       id: MEU_ID
@@ -163,4 +229,5 @@ function conectar() {
   });
 }
 
+gerarEAbrirJanela();
 conectar();
