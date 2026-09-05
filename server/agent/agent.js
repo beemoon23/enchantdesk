@@ -13,6 +13,7 @@ const PORTA_LOCAL = 5757;
 const PASTA_CONFIG = path.join(os.homedir(), '.enchantdesk');
 const ARQUIVO_ID = path.join(PASTA_CONFIG, 'id.txt');
 const ARQUIVO_HTML = path.join(PASTA_CONFIG, 'janela.html');
+const PASTA_RECEBIDOS = path.join(os.homedir(), 'Desktop', 'EnchantDesk-Recebidos');
 
 function obterOuCriarId() {
   if (!fs.existsSync(PASTA_CONFIG)) {
@@ -31,6 +32,7 @@ const idFormatado = MEU_ID.match(/.{1,3}/g).join(' ');
 
 let estadoAtual = 'aguardando';
 let resolverPendencia = null;
+let ultimoArquivoRecebido = null; // { nome, ts }
 
 function criarServidorLocal() {
   const servidor = http.createServer((req, res) => {
@@ -46,7 +48,10 @@ function criarServidorLocal() {
 
     if (req.method === 'GET' && req.url === '/status') {
       res.setHeader('Content-Type', 'application/json');
-      res.end(JSON.stringify({ estado: estadoAtual, id: idFormatado }));
+      const arquivoRecente = ultimoArquivoRecebido && (Date.now() - ultimoArquivoRecebido.ts < 6000)
+        ? ultimoArquivoRecebido.nome
+        : null;
+      res.end(JSON.stringify({ estado: estadoAtual, id: idFormatado, arquivoRecebido: arquivoRecente }));
       return;
     }
 
@@ -125,18 +130,25 @@ function gerarEAbrirJanela() {
     height: 8px;
     border-radius: 50%;
   }
-  .pedido {
+  .pedido, .arquivo {
     margin-top: 20px;
     display: none;
     flex-direction: column;
     align-items: center;
     gap: 12px;
-    background: #152420;
-    border: 1px solid #E8B657;
     padding: 16px 20px;
     border-radius: 8px;
   }
-  .pedido.visivel { display: flex; }
+  .pedido {
+    background: #152420;
+    border: 1px solid #E8B657;
+  }
+  .arquivo {
+    background: #152420;
+    border: 1px solid #5FBFA0;
+    font-size: 13px;
+  }
+  .pedido.visivel, .arquivo.visivel { display: flex; }
   .pedido p { margin: 0; font-size: 14px; text-align: center; }
   .botoes { display: flex; gap: 10px; }
   button {
@@ -167,6 +179,7 @@ function gerarEAbrirJanela() {
       <button class="recusar" onclick="responder(false)">Recusar</button>
     </div>
   </div>
+  <div class="arquivo" id="arquivo">📁 Arquivo recebido: <span id="nome-arquivo"></span></div>
 
   <script>
     async function verificarStatus() {
@@ -176,6 +189,7 @@ function gerarEAbrirJanela() {
         const bolinha = document.querySelector('.bolinha');
         const texto = document.getElementById('texto-status');
         const pedido = document.getElementById('pedido');
+        const arquivo = document.getElementById('arquivo');
 
         if (data.estado === 'pendente') {
           pedido.classList.add('visivel');
@@ -190,6 +204,13 @@ function gerarEAbrirJanela() {
           texto.textContent = 'Aguardando conexão';
           bolinha.style.background = '#5FBFA0';
         }
+
+        if (data.arquivoRecebido) {
+          document.getElementById('nome-arquivo').textContent = data.arquivoRecebido;
+          arquivo.classList.add('visivel');
+        } else {
+          arquivo.classList.remove('visivel');
+        }
       } catch (e) {}
     }
 
@@ -200,9 +221,7 @@ function gerarEAbrirJanela() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ aceitar })
         });
-      } catch (e) {
-        console.error('Erro ao responder:', e);
-      }
+      } catch (e) {}
       verificarStatus();
     }
 
@@ -215,7 +234,7 @@ function gerarEAbrirJanela() {
   fs.writeFileSync(ARQUIVO_HTML, html);
 
   const caminhoFileUrl = 'file:///' + ARQUIVO_HTML.replace(/\\/g, '/');
-  const comando = `start msedge --app="${caminhoFileUrl}" --window-size=380,380`;
+  const comando = `start msedge --app="${caminhoFileUrl}" --window-size=380,400`;
 
   exec(comando, (erro) => {
     if (erro) {
@@ -319,6 +338,37 @@ function processarInput(data) {
   }
 }
 
+// --- Recebimento de arquivo ---
+let arquivoAtual = null; // { nome, stream }
+
+function nomeSeguro(nomeOriginal) {
+  if (!fs.existsSync(PASTA_RECEBIDOS)) {
+    fs.mkdirSync(PASTA_RECEBIDOS, { recursive: true });
+  }
+  let caminho = path.join(PASTA_RECEBIDOS, nomeOriginal);
+  let contador = 1;
+  const ext = path.extname(nomeOriginal);
+  const base = path.basename(nomeOriginal, ext);
+  while (fs.existsSync(caminho)) {
+    caminho = path.join(PASTA_RECEBIDOS, `${base} (${contador})${ext}`);
+    contador++;
+  }
+  return caminho;
+}
+
+function processarArquivo(data) {
+  if (data.tipo === 'arquivo_inicio') {
+    const caminho = nomeSeguro(data.nome);
+    arquivoAtual = { nome: path.basename(caminho), stream: fs.createWriteStream(caminho) };
+  } else if (data.tipo === 'arquivo_chunk' && arquivoAtual) {
+    arquivoAtual.stream.write(Buffer.from(data.dados, 'base64'));
+  } else if (data.tipo === 'arquivo_fim' && arquivoAtual) {
+    arquivoAtual.stream.end();
+    ultimoArquivoRecebido = { nome: arquivoAtual.nome, ts: Date.now() };
+    arquivoAtual = null;
+  }
+}
+
 function conectar() {
   const ws = new WebSocket(SERVIDOR);
 
@@ -351,6 +401,8 @@ function conectar() {
         estadoAtual = 'aguardando';
       } else if (data.tipo === 'input') {
         processarInput(data);
+      } else if (data.tipo === 'arquivo_inicio' || data.tipo === 'arquivo_chunk' || data.tipo === 'arquivo_fim') {
+        processarArquivo(data);
       }
     } catch (e) {
       console.error('Mensagem inválida:', e);
