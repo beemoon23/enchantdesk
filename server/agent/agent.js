@@ -33,6 +33,14 @@ function converterBGRAparaRGBA(buffer) {
   return out;
 }
 
+function montarPacoteFrame(largura, altura, jpegBuffer) {
+  const header = Buffer.alloc(5);
+  header.writeUInt8(1, 0);
+  header.writeUInt16BE(largura, 1);
+  header.writeUInt16BE(altura, 3);
+  return Buffer.concat([header, jpegBuffer]);
+}
+
 function iniciarCaptura(ws) {
   if (capturando) return;
   capturando = true;
@@ -46,26 +54,22 @@ function iniciarCaptura(ws) {
       const bitmap = robot.screen.capture();
       const raw = converterBGRAparaRGBA(bitmap.image);
 
-      const imgFinal = await sharp(raw, {
+      const jpegBuffer = await sharp(raw, {
         raw: { width: bitmap.width, height: bitmap.height, channels: 4 }
       })
-        .jpeg({ quality: 80 })
+        .jpeg({ quality: 70 })
         .toBuffer();
 
-      ws.send(JSON.stringify({
-        tipo: 'frame',
-        dados: imgFinal.toString('base64'),
-        largura: bitmap.width,
-        altura: bitmap.height
-      }));
+      const pacote = montarPacoteFrame(bitmap.width, bitmap.height, jpegBuffer);
+      ws.send(pacote, { binary: true });
 
-      console.log(`Frame processado em ${Date.now() - inicio}ms (${bitmap.width}x${bitmap.height})`);
+      console.log(`Frame processado em ${Date.now() - inicio}ms (${bitmap.width}x${bitmap.height}, ${jpegBuffer.length} bytes)`);
     } catch (e) {
       console.error('Erro ao capturar tela:', e.message);
     } finally {
       capturaEmAndamento = false;
     }
-  }, 50);
+  }, 40);
 }
 
 function pararCaptura() {
@@ -102,11 +106,7 @@ function processarInput(data) {
       robot.mouseToggle('up', data.botao || 'left');
     } else if (data.acao === 'keydown') {
       const tecla = data.tecla;
-
-      if (TECLAS_IGNORAR.includes(tecla)) {
-        return;
-      }
-
+      if (TECLAS_IGNORAR.includes(tecla)) return;
       if (TECLAS_ESPECIAIS[tecla]) {
         robot.keyTap(TECLAS_ESPECIAIS[tecla]);
       } else if (tecla.length === 1) {
@@ -130,7 +130,8 @@ function conectar() {
     }));
   });
 
-  ws.on('message', (msg) => {
+  ws.on('message', (msg, isBinary) => {
+    if (isBinary) return;
     try {
       const data = JSON.parse(msg);
       if (data.tipo === 'iniciar_stream') {
