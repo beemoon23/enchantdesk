@@ -12,10 +12,9 @@
       --bg: #0D1712;
       --panel: #152420;
       --panel-border: #24382F;
-      --panel-hover: #1B2E26;
       --gold: #E8B657;
       --teal: #5FBFA0;
-      --rust: #8A6A52;
+      --erro: #C97B63;
       --text: #EDE8DA;
       --text-muted: #8FA396;
     }
@@ -31,9 +30,6 @@
     }
 
     .topo {
-      display: flex;
-      align-items: baseline;
-      justify-content: space-between;
       padding: 36px 48px 20px;
       border-bottom: 1px solid var(--panel-border);
     }
@@ -56,105 +52,67 @@
       margin-left: 12px;
     }
 
-    .contagem {
+    .central {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 60vh;
+      padding: 40px;
+      gap: 20px;
+    }
+
+    .rotulo {
       font-size: 14px;
       color: var(--text-muted);
     }
 
-    main {
-      padding: 40px 48px;
-      max-width: 960px;
+    .campo-id {
+      display: flex;
+      gap: 10px;
     }
 
-    .vazio {
-      color: var(--text-muted);
-      font-size: 15px;
-      line-height: 1.6;
-      max-width: 40ch;
-    }
-
-    .grade {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-      gap: 14px;
-    }
-
-    .maquina {
+    input#campo-id {
+      font-family: 'IBM Plex Sans', monospace;
+      font-size: 22px;
+      letter-spacing: 2px;
       background: var(--panel);
       border: 1px solid var(--panel-border);
-      border-left: 3px solid var(--teal);
+      color: var(--text);
+      padding: 14px 18px;
       border-radius: 6px;
-      padding: 18px 20px;
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-      transition: background 0.15s ease, border-color 0.15s ease;
+      width: 260px;
+      text-align: center;
     }
 
-    .maquina:hover {
-      background: var(--panel-hover);
-    }
-
-    .maquina.offline {
-      border-left-color: var(--rust);
-      opacity: 0.6;
-    }
-
-    .maquina-nome {
-      display: flex;
-      align-items: center;
-      gap: 9px;
-      font-size: 16px;
-      font-weight: 500;
-    }
-
-    .luz {
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      background: var(--teal);
-      box-shadow: 0 0 8px var(--teal), 0 0 2px var(--teal);
-      animation: pulsar 2.4s ease-in-out infinite;
-      flex-shrink: 0;
-    }
-
-    @keyframes pulsar {
-      0%, 100% { opacity: 1; }
-      50% { opacity: 0.45; }
-    }
-
-    @media (prefers-reduced-motion: reduce) {
-      .luz { animation: none; }
-    }
-
-    .maquina-ip {
-      font-family: 'IBM Plex Sans', monospace;
-      font-size: 13px;
-      color: var(--text-muted);
+    input#campo-id:focus {
+      outline: none;
+      border-color: var(--gold);
     }
 
     button {
       font-family: inherit;
-      background: transparent;
-      color: var(--gold);
-      border: 1px solid var(--gold);
-      padding: 8px 16px;
-      border-radius: 5px;
-      cursor: pointer;
-      font-size: 13px;
-      font-weight: 500;
-      align-self: flex-start;
-      transition: background 0.15s ease, color 0.15s ease;
-    }
-
-    button:hover {
       background: var(--gold);
       color: var(--bg);
+      border: none;
+      padding: 0 24px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 15px;
+      font-weight: 600;
     }
+
+    button:hover { opacity: 0.9; }
 
     button:focus-visible {
       outline: 2px solid var(--teal);
       outline-offset: 2px;
+    }
+
+    .erro {
+      color: var(--erro);
+      font-size: 14px;
+      min-height: 20px;
     }
 
     /* --- Visualização remota --- */
@@ -167,22 +125,12 @@
       border-bottom: 1px solid var(--panel-border);
     }
 
-    .barra-sessao.ativa {
-      display: flex;
-    }
-
-    .btn-voltar {
-      align-self: auto;
-    }
+    .barra-sessao.ativa { display: flex; }
 
     .sessao-nome {
       font-size: 15px;
       color: var(--text-muted);
-    }
-
-    .sessao-nome strong {
-      color: var(--text);
-      font-weight: 500;
+      font-family: 'IBM Plex Sans', monospace;
     }
 
     .palco {
@@ -190,9 +138,7 @@
       padding: 24px 48px 48px;
     }
 
-    .palco.ativo {
-      display: block;
-    }
+    .palco.ativo { display: block; }
 
     .moldura {
       position: relative;
@@ -223,19 +169,21 @@
 <body>
   <div class="topo">
     <h1 class="marca">EnchantDesk<span>Vale Encantado</span></h1>
-    <div class="contagem" id="contagem"></div>
   </div>
 
   <div class="barra-sessao" id="barra-sessao">
-    <button class="btn-voltar" onclick="desconectar()">← Voltar</button>
-    <span class="sessao-nome">Controlando <strong id="nome-sessao"></strong></span>
+    <button onclick="desconectar()">← Voltar</button>
+    <span class="sessao-nome">Controlando <span id="id-sessao"></span></span>
   </div>
 
-  <main>
-    <div id="lista">
-      <p class="vazio">Carregando lista de máquinas...</p>
+  <div class="central" id="tela-inicial">
+    <p class="rotulo">Digite o ID da máquina que deseja controlar</p>
+    <div class="campo-id">
+      <input type="text" id="campo-id" placeholder="000 000 000" maxlength="11">
+      <button onclick="tentarConectar()">Conectar</button>
     </div>
-  </main>
+    <p class="erro" id="mensagem-erro"></p>
+  </div>
 
   <div class="palco" id="palco">
     <div class="moldura">
@@ -254,6 +202,17 @@
 
     const img = document.getElementById('tela-remota');
     const conectandoOverlay = document.getElementById('conectando');
+    const campoId = document.getElementById('campo-id');
+    const mensagemErro = document.getElementById('mensagem-erro');
+
+    campoId.addEventListener('input', () => {
+      let valor = campoId.value.replace(/\D/g, '').slice(0, 9);
+      campoId.value = valor.match(/.{1,3}/g)?.join(' ') || valor;
+    });
+
+    campoId.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') tentarConectar();
+    });
 
     ws.onmessage = (event) => {
       if (event.data instanceof ArrayBuffer) {
@@ -261,8 +220,9 @@
         return;
       }
       const data = JSON.parse(event.data);
-      if (data.tipo === 'lista') {
-        renderLista(data.agentes);
+      if (data.tipo === 'erro') {
+        mensagemErro.textContent = data.mensagem;
+        conectandoOverlay.style.display = 'none';
       }
     };
 
@@ -289,35 +249,20 @@
       }
     }
 
-    function renderLista(agentes) {
-      const divLista = document.getElementById('lista');
-      const contagem = document.getElementById('contagem');
-      if (assistindoAgora) return;
-
-      contagem.textContent = agentes.length > 0
-        ? `${agentes.length} ${agentes.length === 1 ? 'máquina online' : 'máquinas online'}`
-        : '';
-
-      if (agentes.length === 0) {
-        divLista.innerHTML = '<p class="vazio">Nenhuma máquina disponível agora. Assim que um agente for iniciado em algum PC, ele aparece aqui.</p>';
+    function tentarConectar() {
+      const id = campoId.value.replace(/\D/g, '');
+      if (id.length !== 9) {
+        mensagemErro.textContent = 'Digite os 9 dígitos do ID.';
         return;
       }
-
-      divLista.innerHTML = `<div class="grade">${agentes.map(a => `
-        <div class="maquina">
-          <div class="maquina-nome"><span class="luz"></span>${a.nome}</div>
-          <div class="maquina-ip">${a.ip}</div>
-          <button onclick="conectar('${a.nome}')">Conectar</button>
-        </div>
-      `).join('')}</div>`;
-    }
-
-    function conectar(nome) {
-      assistindoAgora = nome;
+      mensagemErro.textContent = '';
+      assistindoAgora = id;
       primeiroFrameRecebido = false;
-      ws.send(JSON.stringify({ tipo: 'conectar', agente: nome }));
 
-      document.getElementById('nome-sessao').textContent = nome;
+      ws.send(JSON.stringify({ tipo: 'conectar', id }));
+
+      document.getElementById('id-sessao').textContent = campoId.value;
+      document.getElementById('tela-inicial').style.display = 'none';
       document.getElementById('barra-sessao').classList.add('ativa');
       document.getElementById('palco').classList.add('ativo');
       conectandoOverlay.style.display = 'flex';
@@ -326,9 +271,11 @@
 
     function desconectar() {
       if (assistindoAgora) {
-        ws.send(JSON.stringify({ tipo: 'desconectar', agente: assistindoAgora }));
+        ws.send(JSON.stringify({ tipo: 'desconectar', id: assistindoAgora }));
       }
       assistindoAgora = null;
+      campoId.value = '';
+      document.getElementById('tela-inicial').style.display = 'flex';
       document.getElementById('barra-sessao').classList.remove('ativa');
       document.getElementById('palco').classList.remove('ativo');
     }
