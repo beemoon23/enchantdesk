@@ -46,27 +46,26 @@ function iniciarCaptura(ws) {
       const bitmap = robot.screen.capture();
       const raw = converterBGRAparaRGBA(bitmap.image);
 
-      const imgReduzida = await sharp(raw, {
+      const imgFinal = await sharp(raw, {
         raw: { width: bitmap.width, height: bitmap.height, channels: 4 }
       })
-        .resize({ width: 800 })
-        .jpeg({ quality: 50 })
+        .jpeg({ quality: 80 })
         .toBuffer();
 
       ws.send(JSON.stringify({
         tipo: 'frame',
-        dados: imgReduzida.toString('base64'),
+        dados: imgFinal.toString('base64'),
         largura: bitmap.width,
         altura: bitmap.height
       }));
 
-      console.log(`Frame processado em ${Date.now() - inicio}ms (captura original: ${bitmap.width}x${bitmap.height})`);
+      console.log(`Frame processado em ${Date.now() - inicio}ms (${bitmap.width}x${bitmap.height})`);
     } catch (e) {
       console.error('Erro ao capturar tela:', e.message);
     } finally {
       capturaEmAndamento = false;
     }
-  }, 100);
+  }, 50);
 }
 
 function pararCaptura() {
