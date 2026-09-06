@@ -1,4 +1,5 @@
 const { app, BrowserWindow, session } = require('electron');
+const path = require('path');
 
 app.commandLine.appendSwitch('unsafely-treat-insecure-origin-as-secure', 'http://10.0.0.52:3000');
 
@@ -18,6 +19,20 @@ function criarJanela() {
 
   session.defaultSession.setPermissionRequestHandler((webContents, permission, callback) => {
     callback(true);
+  });
+
+  session.defaultSession.on('will-download', (event, item) => {
+    const nomeArquivo = item.getFilename();
+    const caminhoDownloads = path.join(app.getPath('downloads'), nomeArquivo);
+    item.setSavePath(caminhoDownloads);
+
+    item.once('done', (event, state) => {
+      if (state === 'completed') {
+        console.log('Arquivo salvo em:', caminhoDownloads);
+      } else {
+        console.error('Download falhou:', state);
+      }
+    });
   });
 }
 
