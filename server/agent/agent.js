@@ -34,12 +34,13 @@ const idFormatado = MEU_ID.match(/.{1,3}/g).join(' ');
 let estadoAtual = 'aguardando';
 let resolverPendencia = null;
 let ultimoArquivoRecebido = null;
+let wsAtivo = null; // referência à conexão viva com o servidor central
 
 function criarServidorLocal() {
   const servidor = http.createServer((req, res) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Nome-Arquivo');
 
     if (req.method === 'OPTIONS') {
       res.statusCode = 204;
@@ -72,10 +73,42 @@ function criarServidorLocal() {
       return;
     }
 
+    if (req.method === 'POST' && req.url === '/enviar-arquivo') {
+      const nomeArquivo = decodeURIComponent(req.headers['x-nome-arquivo'] || 'arquivo_sem_nome');
+      const partes = [];
+      req.on('data', (chunk) => partes.push(chunk));
+      req.on('end', () => {
+        const bufferCompleto = Buffer.concat(partes);
+        enviarArquivoParaViewer(nomeArquivo, bufferCompleto);
+        res.end('ok');
+      });
+      return;
+    }
+
     res.statusCode = 404;
     res.end();
   });
   servidor.listen(PORTA_LOCAL, '127.0.0.1');
+}
+
+function enviarArquivoParaViewer(nome, buffer) {
+  if (!wsAtivo || wsAtivo.readyState !== 1) return;
+
+  const TAMANHO_CHUNK = 64 * 1024;
+  wsAtivo.send(JSON.stringify({ tipo: 'arquivo_remoto_inicio', nome }));
+
+  let offset = 0;
+  function enviarProximoChunk() {
+    if (offset >= buffer.length) {
+      wsAtivo.send(JSON.stringify({ tipo: 'arquivo_remoto_fim' }));
+      return;
+    }
+    const pedaco = buffer.slice(offset, offset + TAMANHO_CHUNK);
+    wsAtivo.send(JSON.stringify({ tipo: 'arquivo_remoto_chunk', dados: pedaco.toString('base64') }));
+    offset += TAMANHO_CHUNK;
+    setImmediate(enviarProximoChunk);
+  }
+  enviarProximoChunk();
 }
 
 function gerarEAbrirJanela() {
@@ -163,6 +196,18 @@ function gerarEAbrirJanela() {
   }
   .aceitar { background: #5FBFA0; color: #0D1712; }
   .recusar { background: transparent; color: #C97B63; border: 1px solid #C97B63; }
+  .enviar-arquivo {
+    margin-top: 16px;
+    background: transparent;
+    border: 1px solid #E8B657;
+    color: #E8B657;
+  }
+  .status-envio {
+    margin-top: 8px;
+    font-size: 12px;
+    color: #5FBFA0;
+    min-height: 16px;
+  }
 </style>
 </head>
 <body>
@@ -181,6 +226,10 @@ function gerarEAbrirJanela() {
     </div>
   </div>
   <div class="arquivo" id="arquivo">📁 Arquivo recebido: <span id="nome-arquivo"></span></div>
+
+  <button class="enviar-arquivo" onclick="document.getElementById('input-arquivo').click()">📤 Enviar arquivo pro técnico</button>
+  <input type="file" id="input-arquivo" style="display:none">
+  <div class="status-envio" id="status-envio"></div>
 
   <script>
     async function verificarStatus() {
@@ -226,6 +275,31 @@ function gerarEAbrirJanela() {
       verificarStatus();
     }
 
+    document.getElementById('input-arquivo').addEventListener('change', async (e) => {
+      const arquivo = e.target.files[0];
+      if (!arquivo) return;
+      const statusEnvio = document.getElementById('status-envio');
+      statusEnvio.textContent = 'Enviando "' + arquivo.name + '"...';
+
+      const buffer = await arquivo.arrayBuffer();
+
+      try {
+        await fetch('http://127.0.0.1:${PORTA_LOCAL}/enviar-arquivo', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/octet-stream',
+            'X-Nome-Arquivo': encodeURIComponent(arquivo.name)
+          },
+          body: buffer
+        });
+        statusEnvio.textContent = 'Enviado ✓';
+      } catch (err) {
+        statusEnvio.textContent = 'Erro ao enviar';
+      }
+      setTimeout(() => { statusEnvio.textContent = ''; }, 4000);
+      e.target.value = '';
+    });
+
     setInterval(verificarStatus, 1000);
     verificarStatus();
   </script>
@@ -235,7 +309,7 @@ function gerarEAbrirJanela() {
   fs.writeFileSync(ARQUIVO_HTML, html);
 
   const caminhoFileUrl = 'file:///' + ARQUIVO_HTML.replace(/\\/g, '/');
-  const comando = `start msedge --app="${caminhoFileUrl}" --window-size=380,400`;
+  const comando = `start msedge --app="${caminhoFileUrl}" --window-size=380,460`;
 
   exec(comando, (erro) => {
     if (erro) {
@@ -331,14 +405,12 @@ function processarInput(data) {
 
       if (TECLAS_IGNORAR.includes(tecla)) return;
 
-      // Com modificador (Ctrl+C, Ctrl+V, Ctrl+A, etc): usa combinação de verdade
       if (modificadores.length > 0) {
         const teclaRobot = TECLAS_ESPECIAIS[tecla] || tecla.toLowerCase();
         robot.keyTap(teclaRobot, modificadores);
         return;
       }
 
-      // Sem modificador: comportamento normal (teclas especiais ou digitação de caractere)
       if (TECLAS_ESPECIAIS[tecla]) {
         robot.keyTap(TECLAS_ESPECIAIS[tecla]);
       } else if (tecla.length === 1) {
@@ -413,6 +485,7 @@ async function colarClipboardRecebido(texto) {
 
 function conectar() {
   const ws = new WebSocket(SERVIDOR);
+  wsAtivo = ws;
 
   ws.on('open', () => {
     console.log('Conectado ao servidor EnchantDesk. Seu ID: ' + idFormatado);
@@ -457,6 +530,7 @@ function conectar() {
   ws.on('close', () => {
     pararCaptura();
     estadoAtual = 'aguardando';
+    wsAtivo = null;
     console.log('Desconectado. Tentando reconectar em 5s...');
     setTimeout(conectar, 5000);
   });
