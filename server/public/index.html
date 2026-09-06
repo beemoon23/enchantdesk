@@ -369,7 +369,15 @@
 
     img.addEventListener('keydown', (e) => {
       e.preventDefault();
-      enviarInput({ acao: 'keydown', tecla: e.key });
+
+      // Trata Ctrl (Windows/Linux) e Cmd (Mac) como "control" —
+      // já que o alvo remoto é sempre Windows nesse projeto
+      const modificadores = [];
+      if (e.ctrlKey || e.metaKey) modificadores.push('control');
+      if (e.altKey) modificadores.push('alt');
+      if (e.shiftKey && (e.ctrlKey || e.metaKey || e.altKey)) modificadores.push('shift');
+
+      enviarInput({ acao: 'keydown', tecla: e.key, modificadores });
     });
 
     const TAMANHO_CHUNK = 64 * 1024;
