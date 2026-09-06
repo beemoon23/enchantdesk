@@ -1,6 +1,8 @@
 const express = require('express');
 const { WebSocketServer } = require('ws');
 const http = require('http');
+const fs = require('fs');
+const path = require('path');
 
 const app = express();
 const server = http.createServer(app);
@@ -9,6 +11,17 @@ const wss = new WebSocketServer({ server });
 const agentes = {};
 const assistindo = {};
 const pendentes = {};
+
+const ARQUIVO_LOG = path.join(__dirname, 'conexoes.log');
+
+function registrarLog(mensagem) {
+  const timestamp = new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+  const linha = `[${timestamp}] ${mensagem}\n`;
+  fs.appendFile(ARQUIVO_LOG, linha, (err) => {
+    if (err) console.error('Erro ao gravar log:', err.message);
+  });
+  console.log(linha.trim());
+}
 
 const TIPOS_ENCAMINHAR_PARA_AGENTE = ['input', 'arquivo_inicio', 'arquivo_chunk', 'arquivo_fim'];
 
@@ -38,7 +51,7 @@ wss.on('connection', (ws) => {
     if (data.tipo === 'anuncio') {
       idAgente = data.id;
       agentes[idAgente] = { ws };
-      console.log(`[+] ${idAgente} online`);
+      registrarLog(`Agente ${idAgente} ficou online`);
     }
 
     if (data.tipo === 'permitir_stream' && idAgente) {
@@ -47,7 +60,7 @@ wss.on('connection', (ws) => {
         if (!assistindo[idAgente]) assistindo[idAgente] = new Set();
         assistindo[idAgente].add(viewerPendente);
         delete pendentes[idAgente];
-        console.log(`[👁] Conexão aceita em ${idAgente}`);
+        registrarLog(`Conexão ACEITA em ${idAgente}`);
       }
     }
 
@@ -60,13 +73,14 @@ wss.on('connection', (ws) => {
         }));
       }
       delete pendentes[idAgente];
-      console.log(`[🚫] Conexão recusada em ${idAgente}`);
+      registrarLog(`Conexão RECUSADA em ${idAgente}`);
     }
 
     if (data.tipo === 'conectar') {
       const agente = agentes[data.id];
       if (!agente) {
         ws.send(JSON.stringify({ tipo: 'erro', mensagem: 'ID não encontrado ou máquina offline.' }));
+        registrarLog(`Tentativa de conexão em ID inexistente: ${data.id}`);
         return;
       }
 
@@ -75,11 +89,13 @@ wss.on('connection', (ws) => {
       const jaTemViewersAtivos = assistindo[data.id] && assistindo[data.id].size > 0;
       if (jaTemViewersAtivos) {
         assistindo[data.id].add(ws);
+        registrarLog(`Novo viewer entrou na sessão já ativa de ${data.id}`);
         return;
       }
 
       pendentes[data.id] = ws;
       agente.ws.send(JSON.stringify({ tipo: 'solicitar_conexao' }));
+      registrarLog(`Pedido de conexão enviado para ${data.id}`);
     }
 
     if (data.tipo === 'desconectar') {
@@ -95,7 +111,7 @@ wss.on('connection', (ws) => {
   ws.on('close', () => {
     if (idAgente && agentes[idAgente]) {
       delete agentes[idAgente];
-      console.log(`[-] ${idAgente} offline`);
+      registrarLog(`Agente ${idAgente} ficou offline`);
     }
     if (assistindoId) {
       pararDeAssistir(assistindoId, ws);
@@ -112,7 +128,7 @@ function pararDeAssistir(id, viewerWs) {
     delete assistindo[id];
     const agente = agentes[id];
     if (agente) agente.ws.send(JSON.stringify({ tipo: 'parar_stream' }));
-    console.log(`[👁] Ninguém mais assistindo ${id}, parando captura`);
+    registrarLog(`Sessão encerrada em ${id}`);
   }
 }
 
@@ -120,5 +136,5 @@ app.use(express.static('public'));
 
 const PORTA = 3000;
 server.listen(PORTA, () => {
-  console.log(`EnchantDesk server rodando na porta ${PORTA}`);
+  registrarLog('EnchantDesk server iniciado');
 });
