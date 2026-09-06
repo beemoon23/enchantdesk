@@ -23,7 +23,8 @@ function registrarLog(mensagem) {
   console.log(linha.trim());
 }
 
-const TIPOS_ENCAMINHAR_PARA_AGENTE = ['input', 'arquivo_inicio', 'arquivo_chunk', 'arquivo_fim'];
+const TIPOS_ENCAMINHAR_PARA_AGENTE = ['input', 'arquivo_inicio', 'arquivo_chunk', 'arquivo_fim', 'clipboard'];
+const TIPOS_ENCAMINHAR_PARA_VIEWER = ['clipboard'];
 
 wss.on('connection', (ws) => {
   let idAgente = null;
@@ -102,9 +103,20 @@ wss.on('connection', (ws) => {
       pararDeAssistir(data.id, ws);
     }
 
-    if (TIPOS_ENCAMINHAR_PARA_AGENTE.includes(data.tipo) && assistindoId) {
+    // Viewer -> Agente
+    if (TIPOS_ENCAMINHAR_PARA_AGENTE.includes(data.tipo) && assistindoId && !idAgente) {
       const agente = agentes[assistindoId];
       if (agente) agente.ws.send(JSON.stringify(data));
+    }
+
+    // Agente -> Viewer(s) (ex: clipboard mudou na máquina remota)
+    if (TIPOS_ENCAMINHAR_PARA_VIEWER.includes(data.tipo) && idAgente) {
+      const viewers = assistindo[idAgente];
+      if (viewers) {
+        viewers.forEach((viewerWs) => {
+          if (viewerWs.readyState === 1) viewerWs.send(JSON.stringify(data));
+        });
+      }
     }
   });
 
