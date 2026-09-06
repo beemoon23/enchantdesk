@@ -24,7 +24,7 @@ function registrarLog(mensagem) {
 }
 
 const TIPOS_ENCAMINHAR_PARA_AGENTE = ['input', 'arquivo_inicio', 'arquivo_chunk', 'arquivo_fim', 'clipboard'];
-const TIPOS_ENCAMINHAR_PARA_VIEWER = ['clipboard'];
+const TIPOS_ENCAMINHAR_PARA_VIEWER = ['clipboard', 'arquivo_remoto_inicio', 'arquivo_remoto_chunk', 'arquivo_remoto_fim'];
 
 wss.on('connection', (ws) => {
   let idAgente = null;
@@ -103,13 +103,11 @@ wss.on('connection', (ws) => {
       pararDeAssistir(data.id, ws);
     }
 
-    // Viewer -> Agente
     if (TIPOS_ENCAMINHAR_PARA_AGENTE.includes(data.tipo) && assistindoId && !idAgente) {
       const agente = agentes[assistindoId];
       if (agente) agente.ws.send(JSON.stringify(data));
     }
 
-    // Agente -> Viewer(s) (ex: clipboard mudou na máquina remota)
     if (TIPOS_ENCAMINHAR_PARA_VIEWER.includes(data.tipo) && idAgente) {
       const viewers = assistindo[idAgente];
       if (viewers) {
