@@ -6,6 +6,7 @@ const http = require('http');
 const { exec } = require('child_process');
 const robot = require('robotjs');
 const sharp = require('sharp');
+const clipboardy = require('clipboardy');
 
 const SERVIDOR = 'ws://10.0.0.52:3000';
 const PORTA_LOCAL = 5757;
@@ -32,7 +33,7 @@ const idFormatado = MEU_ID.match(/.{1,3}/g).join(' ');
 
 let estadoAtual = 'aguardando';
 let resolverPendencia = null;
-let ultimoArquivoRecebido = null; // { nome, ts }
+let ultimoArquivoRecebido = null;
 
 function criarServidorLocal() {
   const servidor = http.createServer((req, res) => {
@@ -338,8 +339,7 @@ function processarInput(data) {
   }
 }
 
-// --- Recebimento de arquivo ---
-let arquivoAtual = null; // { nome, stream }
+let arquivoAtual = null;
 
 function nomeSeguro(nomeOriginal) {
   if (!fs.existsSync(PASTA_RECEBIDOS)) {
@@ -369,12 +369,47 @@ function processarArquivo(data) {
   }
 }
 
+// --- Área de transferência compartilhada ---
+let ultimoClipboardLocal = '';
+let ignorarProximaLeituraClipboard = false;
+
+function iniciarMonitorClipboard(ws) {
+  setInterval(async () => {
+    try {
+      const atual = await clipboardy.read();
+      if (atual !== ultimoClipboardLocal) {
+        ultimoClipboardLocal = atual;
+        if (ignorarProximaLeituraClipboard) {
+          ignorarProximaLeituraClipboard = false;
+          return;
+        }
+        if (atual && atual.length < 100000 && ws.readyState === 1) {
+          ws.send(JSON.stringify({ tipo: 'clipboard', texto: atual }));
+        }
+      }
+    } catch (e) {
+      // Clipboard pode falhar se tiver imagem ou conteúdo não-texto; ignora silenciosamente
+    }
+  }, 1000);
+}
+
+async function colarClipboardRecebido(texto) {
+  try {
+    ultimoClipboardLocal = texto;
+    ignorarProximaLeituraClipboard = true;
+    await clipboardy.write(texto);
+  } catch (e) {
+    console.error('Erro ao escrever clipboard:', e.message);
+  }
+}
+
 function conectar() {
   const ws = new WebSocket(SERVIDOR);
 
   ws.on('open', () => {
     console.log('Conectado ao servidor EnchantDesk. Seu ID: ' + idFormatado);
     ws.send(JSON.stringify({ tipo: 'anuncio', id: MEU_ID }));
+    iniciarMonitorClipboard(ws);
   });
 
   ws.on('message', async (msg, isBinary) => {
@@ -403,6 +438,8 @@ function conectar() {
         processarInput(data);
       } else if (data.tipo === 'arquivo_inicio' || data.tipo === 'arquivo_chunk' || data.tipo === 'arquivo_fim') {
         processarArquivo(data);
+      } else if (data.tipo === 'clipboard') {
+        colarClipboardRecebido(data.texto);
       }
     } catch (e) {
       console.error('Mensagem inválida:', e);
