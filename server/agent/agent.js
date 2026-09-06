@@ -327,7 +327,18 @@ function processarInput(data) {
       robot.mouseToggle('up', data.botao || 'left');
     } else if (data.acao === 'keydown') {
       const tecla = data.tecla;
+      const modificadores = data.modificadores || [];
+
       if (TECLAS_IGNORAR.includes(tecla)) return;
+
+      // Com modificador (Ctrl+C, Ctrl+V, Ctrl+A, etc): usa combinação de verdade
+      if (modificadores.length > 0) {
+        const teclaRobot = TECLAS_ESPECIAIS[tecla] || tecla.toLowerCase();
+        robot.keyTap(teclaRobot, modificadores);
+        return;
+      }
+
+      // Sem modificador: comportamento normal (teclas especiais ou digitação de caractere)
       if (TECLAS_ESPECIAIS[tecla]) {
         robot.keyTap(TECLAS_ESPECIAIS[tecla]);
       } else if (tecla.length === 1) {
@@ -369,7 +380,6 @@ function processarArquivo(data) {
   }
 }
 
-// --- Área de transferência compartilhada ---
 let ultimoClipboardLocal = '';
 let ignorarProximaLeituraClipboard = false;
 
@@ -387,9 +397,7 @@ function iniciarMonitorClipboard(ws) {
           ws.send(JSON.stringify({ tipo: 'clipboard', texto: atual }));
         }
       }
-    } catch (e) {
-      // Clipboard pode falhar se tiver imagem ou conteúdo não-texto; ignora silenciosamente
-    }
+    } catch (e) {}
   }, 1000);
 }
 
