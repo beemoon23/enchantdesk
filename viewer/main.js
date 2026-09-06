@@ -1,4 +1,6 @@
-const { app, BrowserWindow } = require('electron');
+const { app, BrowserWindow, session } = require('electron');
+
+app.commandLine.appendSwitch('unsafely-treat-insecure-origin-as-secure', 'http://10.0.0.52:3000');
 
 function criarJanela() {
   const janela = new BrowserWindow({
@@ -13,6 +15,10 @@ function criarJanela() {
 
   janela.loadURL('http://10.0.0.52:3000');
   janela.setMenuBarVisibility(false);
+
+  session.defaultSession.setPermissionRequestHandler((webContents, permission, callback) => {
+    callback(true);
+  });
 }
 
 app.whenReady().then(criarJanela);
