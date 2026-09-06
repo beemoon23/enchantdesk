@@ -14,7 +14,8 @@
     "appId": "com.valeencantado.enchantdesk",
     "productName": "EnchantDesk",
     "win": {
-      "target": "nsis"
+      "target": "nsis",
+      "icon": "icon.ico"
     },
     "nsis": {
       "oneClick": false,
