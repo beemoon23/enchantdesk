@@ -129,6 +129,7 @@
       gap: 16px;
       padding: 18px 48px;
       border-bottom: 1px solid var(--panel-border);
+      flex-wrap: wrap;
     }
 
     .barra-sessao.ativa { display: flex; }
@@ -141,7 +142,7 @@
 
     .espacador { flex: 1; }
 
-    .progresso {
+    .progresso, .aviso-clipboard {
       font-size: 13px;
       color: var(--teal);
     }
@@ -189,6 +190,8 @@
     <span class="sessao-nome">Controlando <span id="id-sessao"></span></span>
     <div class="espacador"></div>
     <span class="progresso" id="progresso-envio"></span>
+    <span class="aviso-clipboard" id="aviso-clipboard"></span>
+    <button class="secundario" onclick="enviarClipboard()">📋 Colar no remoto</button>
     <button class="secundario" onclick="document.getElementById('input-arquivo').click()">Enviar arquivo</button>
     <input type="file" id="input-arquivo" style="display:none">
   </div>
@@ -223,6 +226,7 @@
     const mensagemErro = document.getElementById('mensagem-erro');
     const inputArquivo = document.getElementById('input-arquivo');
     const progressoEnvio = document.getElementById('progresso-envio');
+    const avisoClipboard = document.getElementById('aviso-clipboard');
 
     campoId.addEventListener('input', () => {
       let valor = campoId.value.replace(/\D/g, '').slice(0, 9);
@@ -243,7 +247,34 @@
         mensagemErro.textContent = data.mensagem;
         conectandoOverlay.style.display = 'none';
       }
+      if (data.tipo === 'clipboard') {
+        receberClipboardRemoto(data.texto);
+      }
     };
+
+    async function receberClipboardRemoto(texto) {
+      try {
+        await navigator.clipboard.writeText(texto);
+        avisoClipboard.textContent = '📋 Copiado da máquina remota';
+        setTimeout(() => { avisoClipboard.textContent = ''; }, 3000);
+      } catch (e) {
+        console.error('Não foi possível escrever no clipboard:', e);
+      }
+    }
+
+    async function enviarClipboard() {
+      if (!assistindoAgora) return;
+      try {
+        const texto = await navigator.clipboard.readText();
+        if (!texto) return;
+        ws.send(JSON.stringify({ tipo: 'clipboard', texto }));
+        avisoClipboard.textContent = '📋 Enviado para a máquina remota';
+        setTimeout(() => { avisoClipboard.textContent = ''; }, 3000);
+      } catch (e) {
+        avisoClipboard.textContent = 'Não foi possível ler a área de transferência';
+        setTimeout(() => { avisoClipboard.textContent = ''; }, 3000);
+      }
+    }
 
     function processarFrameBinario(buffer) {
       const view = new DataView(buffer);
@@ -341,8 +372,7 @@
       enviarInput({ acao: 'keydown', tecla: e.key });
     });
 
-    // --- Envio de arquivo ---
-    const TAMANHO_CHUNK = 64 * 1024; // 64KB por pedaço
+    const TAMANHO_CHUNK = 64 * 1024;
 
     inputArquivo.addEventListener('change', async () => {
       const arquivo = inputArquivo.files[0];
@@ -368,7 +398,6 @@
         const porcentagem = Math.round(((i + 1) / totalChunks) * 100);
         progressoEnvio.textContent = `Enviando... ${porcentagem}%`;
 
-        // pequena pausa a cada poucos chunks pra não sobrecarregar o socket
         if (i % 5 === 0) await new Promise((r) => setTimeout(r, 5));
       }
 
